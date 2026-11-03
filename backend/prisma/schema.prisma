@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum KYCStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id              String          @id @default(uuid())
+  email           String          @unique
+  password        String          // Hashed password
+  kycStatus       KYCStatus       @default(UNVERIFIED)
+  role            Role            @default(USER)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  wallets         Wallet[]
+  accounts        LedgerAccount[]
+  orders          Order[]
+  deposits        Deposit[]
+  withdrawals     Withdrawal[]
+  adminLogs       AdminAuditLog[] @relation("AdminLogs")
+}
+
+model Wallet {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  chain           String   // e.g., 'ETH', 'POLYGON'
+  depositAddress  String   @unique
+  createdAt       DateTime @default(now())
+}
+
+model LedgerAccount {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  currency        String   // e.g., 'USDT', 'ETH'
+  available       Decimal  @default(0.00) @db.Decimal(36, 18)
+  locked          Decimal  @default(0.00) @db.Decimal(36, 18)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  entries         LedgerEntry[]
+  
+  @@unique([userId, currency])
+}
+
+enum EntryType {
+  DEPOSIT
+  WITHDRAWAL
+  TRADE_FILL
+  FEE
+  ADMIN_ADJUSTMENT
+}
+
+model LedgerEntry {
+  id              String        @id @default(uuid())
+  accountId       String
+  account         LedgerAccount @relation(fields: [accountId], references: [id])
+  delta           Decimal       @db.Decimal(36, 18)
+  balanceAfter    Decimal       @db.Decimal(36, 18)
+  type            EntryType
+  referenceId     String?       // ID of trade, deposit, or withdrawal causing this entry
+  createdBy       String?       // If admin action, the admin's ID
+  createdAt       DateTime      @default(now())
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+}
+
+enum OrderStatus {
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+  REJECTED
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  symbol          String      // e.g., 'ETH/USDT'
+  side            OrderSide
+  type            OrderType
+  price           Decimal?    @db.Decimal(36, 18) // Null for market orders
+  quantity        Decimal     @db.Decimal(36, 18)
+  filledQuantity  Decimal     @default(0) @db.Decimal(36, 18)
+  status          OrderStatus @default(OPEN)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  buyTrades       Trade[]     @relation("BuyOrderTrades")
+  sellTrades      Trade[]     @relation("SellOrderTrades")
+}
+
+model Trade {
+  id              String    @id @default(uuid())
+  buyOrderId      String
+  buyOrder        Order     @relation("BuyOrderTrades", fields: [buyOrderId], references: [id])
+  sellOrderId     String
+  sellOrder       Order     @relation("SellOrderTrades", fields: [sellOrderId], references: [id])
+  price           Decimal   @db.Decimal(36, 18)
+  quantity        Decimal   @db.Decimal(36, 18)
+  fee             Decimal   @db.Decimal(36, 18)
+  createdAt       DateTime  @default(now())
+}
+
+enum DepositStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+model Deposit {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  txHash          String        @unique
+  amount          Decimal       @db.Decimal(36, 18)
+  symbol          String
+  confirmations   Int           @default(0)
+  status          DepositStatus @default(PENDING)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
+model Withdrawal {
+  id              String           @id @default(uuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id])
+  txHash          String?          @unique
+  amount          Decimal          @db.Decimal(36, 18)
+  symbol          String
+  destination     String
+  status          WithdrawalStatus @default(PENDING)
+  approvedBy      String?          // Admin ID if manual approval is required
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model AdminAuditLog {
+  id              String   @id @default(uuid())
+  adminId         String
+  admin           User     @relation("AdminLogs", fields: [adminId], references: [id])
+  targetType      String   // e.g., 'USER', 'BALANCE'
+  targetId        String
+  action          String   // e.g., 'UPDATE_KYC', 'ADJUST_BALANCE'
+  before          Json?
+  after           Json?
+  note            String?
+  createdAt       DateTime @default(now())
+}
