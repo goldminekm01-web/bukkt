@@ -69,23 +69,63 @@ export default function AdminDashboard() {
     e.preventDefault();
     setBlogStatus('Posting...');
     try {
-      const blogData = {
-        id: 'local_' + Date.now(),
-        title: blogTitle,
-        excerpt: blogExcerpt,
-        content: blogContent,
-        imageUrl: blogImage,
-        date: new Date().toISOString()
-      };
-      const stored = JSON.parse(localStorage.getItem('platform_blogs') || '[]');
-      stored.push(blogData);
-      localStorage.setItem('platform_blogs', JSON.stringify(stored));
-      setBlogStatus('Published!');
+      const { db } = await import('@/lib/firebase');
+      const { collection, addDoc } = await import('firebase/firestore');
+      if (editingBlogId) {
+        const { doc, updateDoc } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'blogs', editingBlogId), {
+          title: blogTitle,
+          excerpt: blogExcerpt,
+          content: blogContent,
+          imageUrl: blogImage,
+        });
+      } else {
+        await addDoc(collection(db, 'blogs'), {
+          title: blogTitle,
+          excerpt: blogExcerpt,
+          content: blogContent,
+          imageUrl: blogImage,
+          date: new Date().toISOString()
+        });
+      }
+      setBlogStatus(editingBlogId ? 'Updated!' : 'Published!');
+      setEditingBlogId(null);
       setBlogTitle(''); setBlogExcerpt(''); setBlogContent(''); setBlogImage('');
+      fetchAdminBlogs();
     } catch (err) {
       console.error(err);
       setBlogStatus('Failed: ' + (err?.message || err));
     }
+  };
+  
+  const fetchAdminBlogs = async () => {
+    try {
+      const { db } = await import('@/lib/firebase');
+      const { collection, getDocs, query, orderBy } = await import('firebase/firestore');
+      const snap = await getDocs(query(collection(db, 'blogs'), orderBy('date', 'desc')));
+      const list: any[] = [];
+      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+      setAdminBlogs(list);
+    } catch (e) { console.error(e); }
+  };
+  
+  const handleDeleteBlog = async (id: string) => {
+    if (!confirm('Delete this post?')) return;
+    try {
+      const { db } = await import('@/lib/firebase');
+      const { doc, deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'blogs', id));
+      setAdminBlogs(prev => prev.filter(b => b.id !== id));
+    } catch (e) { console.error(e); setBlogStatus('Delete failed'); }
+  };
+  
+  const handleEditBlog = (b: any) => {
+    setEditingBlogId(b.id);
+    setBlogTitle(b.title || '');
+    setBlogExcerpt(b.excerpt || '');
+    setBlogContent(b.content || '');
+    setBlogImage(b.imageUrl || '');
+    setBlogStatus('Editing...');
   };
 
   // Authentication State
@@ -101,6 +141,8 @@ export default function AdminDashboard() {
   const [blogContent, setBlogContent] = useState('');
   const [blogImage, setBlogImage] = useState('');
   const [blogStatus, setBlogStatus] = useState('');
+  const [adminBlogs, setAdminBlogs] = useState<any[]>([]);
+  const [editingBlogId, setEditingBlogId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -115,8 +157,9 @@ export default function AdminDashboard() {
     const fetchData = async () => {
       let globalWithdrawals: Withdrawal[] = [];
       try {
-        const { db } = await import('@/lib/firebase');
+        const { db, auth } = await import('@/lib/firebase');
         const { collection, getDocs, query, orderBy, limit } = await import('firebase/firestore');
+        const { signInAnonymously } = await import('firebase/auth');
 
         const globalUsers: User[] = [];
 
@@ -137,6 +180,13 @@ export default function AdminDashboard() {
 
         // Secondary: Fetch Global Users from Firebase Firestore
         try {
+          // Sign in anonymously so Firestore reads pass `request.auth != null` rule
+          try {
+            await signInAnonymously(auth);
+          } catch (authErr) {
+            // Already signed in or anonymous auth disabled — proceed anyway
+            console.warn("Anonymous Firebase sign-in notice:", authErr);
+          }
           const usersSnap = await getDocs(collection(db, 'users'));
           usersSnap.forEach((doc) => {
             const data = doc.data();
@@ -174,14 +224,13 @@ export default function AdminDashboard() {
         if (globalUsers.length > 0) setUsers(globalUsers); else { const lu = JSON.parse(localStorage.getItem('platform_users')||'[]'); setUsers(lu.map((u:any)=>({id:u.id||String(Math.random()),name:u.name||u.email||'User',email:u.email||'',phone:u.phone||'',createdAt:u.createdAt||'',balances:u.balance||{},walletAddress:u.walletAddress||''}))); }
 
         // Fetch Global Visitors
-        try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-          const vres = await fetch(apiUrl + '/api/visitors');
-          if (vres.ok) {
-            const vdata = await vres.json();
-            setVisitors(vdata.visitors || []);
-          }
-        } catch (e) { console.warn('visitor fetch failed', e); }
+        const visitorsQ = query(collection(db, 'visitors'), orderBy('timestamp', 'desc'), limit(500));
+        const visitorsSnap = await getDocs(visitorsQ);
+        const globalVisitors: Visitor[] = [];
+        visitorsSnap.forEach((doc) => {
+          globalVisitors.push(doc.data() as Visitor);
+        });
+        setVisitors(globalVisitors);
 
         // Fetch Global Withdrawals from Firestore
         const withdrawalsQ = query(collection(db, 'withdrawals'), limit(500));
@@ -246,6 +295,7 @@ export default function AdminDashboard() {
     };
 
     fetchData();
+    fetchAdminBlogs();
   }, [isAdminAuth]);
 
   const handleAdjustBalance = async (e: React.FormEvent) => {
@@ -678,10 +728,23 @@ export default function AdminDashboard() {
             <input type="url" placeholder="Image URL (Optional)" value={blogImage} onChange={e=>setBlogImage(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             <textarea required placeholder="Full Content..." rows={4} value={blogContent} onChange={e=>setBlogContent(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             <div className="flex items-center gap-3">
-              <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold text-white">Publish</button>
+              <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold text-white">{editingBlogId ? 'Update' : 'Publish'}</button>
+              {editingBlogId && <button type="button" onClick={() => { setEditingBlogId(null); setBlogTitle(''); setBlogExcerpt(''); setBlogContent(''); setBlogImage(''); setBlogStatus(''); }} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-bold text-white">Cancel</button>}
               {blogStatus && <span className="text-sm text-slate-400">{blogStatus}</span>}
             </div>
           </form>
+          <div className="space-y-2 mt-4">
+            <h3 className="text-sm font-bold text-slate-300">Existing Posts</h3>
+            {adminBlogs.map(b => (
+              <div key={b.id} className="flex items-center justify-between bg-slate-900/50 border border-slate-700/50 rounded-lg px-3 py-2">
+                <span className="text-sm text-slate-200 truncate">{b.title}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => handleEditBlog(b)} className="text-xs text-indigo-400 hover:text-indigo-300">Edit</button>
+                  <button onClick={() => handleDeleteBlog(b.id)} className="text-xs text-red-400 hover:text-red-300">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
       </div>
