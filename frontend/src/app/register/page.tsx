@@ -67,6 +67,24 @@ export default function RegisterPage() {
 
       let userId = "usr_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
 
+      // Detect user country from IP geolocation
+      let country = 'Unknown';
+      try {
+        const res = await fetch('https://ipwho.is/');
+        const data = await res.json();
+        if (data.success) {
+          country = data.country || 'Unknown';
+        }
+      } catch (err) {
+        try {
+          const res2 = await fetch('https://freeipapi.com/api/json');
+          const data2 = await res2.json();
+          country = data2.countryName || 'Unknown';
+        } catch (err2) {
+          console.warn("Country detection notice:", err2);
+        }
+      }
+
       // Attempt Firebase Auth creation
       try {
         const { auth } = await import("@/lib/firebase");
@@ -100,6 +118,7 @@ export default function RegisterPage() {
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         email: formData.email,
         phone: formData.phone,
+        country,
         role: 'USER',
         balance: {
           USDT: 0,

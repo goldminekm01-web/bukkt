@@ -3,5 +3,11 @@
   "framework": "nextjs",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/.next",
-  "devCommand": "cd frontend && npm run dev"
+  "devCommand": "cd frontend && npm run dev",
+  "crons": [
+    {
+      "path": "/api/visitors-cleanup",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

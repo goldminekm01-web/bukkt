@@ -9,6 +9,7 @@ interface User {
   name: string;
   email: string;
   phone?: string;
+  country?: string;
   createdAt?: string;
   balances: Record<string, number>;
   walletAddress?: string;
@@ -56,6 +57,9 @@ export default function AdminDashboard() {
   // Stats
   const [totalVolume, setTotalVolume] = useState(0);
 
+  // Visitor cleanup state
+  const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
+
   // Copy State
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   
@@ -63,6 +67,23 @@ export default function AdminDashboard() {
     navigator.clipboard.writeText(address);
     setCopiedAddress(address);
     setTimeout(() => setCopiedAddress(null), 2000);
+  };
+
+  const handleCleanupVisitors = async () => {
+    setCleanupStatus('Cleaning...');
+    try {
+      const res = await fetch('/api/visitors-cleanup', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setCleanupStatus(`Cleaned ${data.deletedCount || 0} old visitor logs`);
+      } else {
+        setCleanupStatus('Cleanup failed');
+      }
+    } catch (err) {
+      console.error(err);
+      setCleanupStatus('Cleanup failed');
+    }
+    setTimeout(() => setCleanupStatus(null), 4000);
   };
   
   const handlePostBlog = async (e: React.FormEvent) => {
@@ -548,6 +569,7 @@ export default function AdminDashboard() {
                       <th className="px-6 py-4 font-medium">Name</th>
                       <th className="px-6 py-4 font-medium">Email</th>
                       <th className="px-6 py-4 font-medium">Phone</th>
+                      <th className="px-6 py-4 font-medium">Country</th>
                       <th className="px-6 py-4 font-medium">Registered</th>
                       <th className="px-6 py-4 font-medium">Wallet Address</th>
                       <th className="px-6 py-4 font-medium">Balances (USDT/ETH)</th>
@@ -560,6 +582,7 @@ export default function AdminDashboard() {
                         <td className="px-6 py-4 font-medium text-white">{u.name}</td>
                         <td className="px-6 py-4 text-slate-400">{u.email}</td>
                         <td className="px-6 py-4 text-slate-400">{u.phone || <span className="text-slate-600 italic">None</span>}</td>
+                        <td className="px-6 py-4 text-slate-400">{u.country || <span className="text-slate-600 italic">Unknown</span>}</td>
                         <td className="px-6 py-4 text-sm text-slate-400">{u.createdAt ? new Date(u.createdAt).toLocaleString() : <span className="text-slate-600 italic">Unknown</span>}</td>
                         <td className="px-6 py-4 font-mono text-xs text-indigo-300">
                           {u.walletAddress ? (
@@ -704,7 +727,19 @@ export default function AdminDashboard() {
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                   <Globe size={18} className="text-cyan-400" /> Visitor Traffic
                 </h2>
-                <span className="text-xs font-medium bg-slate-700 text-slate-300 px-2 py-1 rounded-md">Live</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium bg-slate-700 text-slate-300 px-2 py-1 rounded-md">Live</span>
+                  <button
+                    onClick={handleCleanupVisitors}
+                    disabled={cleanupStatus === 'Cleaning...'}
+                    className="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-md font-medium disabled:opacity-50 transition-colors"
+                  >
+                    {cleanupStatus === 'Cleaning...' ? 'Cleaning...' : 'Clean Old Logs'}
+                  </button>
+                  {cleanupStatus && cleanupStatus !== 'Cleaning...' && (
+                    <span className="text-xs text-slate-500">{cleanupStatus}</span>
+                  )}
+                </div>
               </div>
               <div className="p-6 flex-1 overflow-y-auto max-h-[600px] space-y-4">
                 {visitors.map((v, i) => (
