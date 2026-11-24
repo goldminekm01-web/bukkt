@@ -83,9 +83,34 @@ export default function DashboardPage() {
   }, [router]);
 
   // Load balances
-  const loadBalances = () => {
+  const loadBalances = async () => {
     const userId = localStorage.getItem("token");
     if (!userId) return;
+
+    // Primary: read from Firestore (shared source of truth — admin adjustments write here)
+    try {
+      const { db } = await import("@/lib/firebase");
+      const { doc, getDoc } = await import("firebase/firestore");
+      const userDoc = await getDoc(doc(db, "users", userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        if (userData && userData.balance) {
+          setBalances(userData.balance);
+          // Hydrate localStorage for subsequent reads
+          const storedUsers = JSON.parse(localStorage.getItem("platform_users") || "[]");
+          const idx = storedUsers.findIndex((u: any) => u.id === userId);
+          if (idx !== -1) {
+            storedUsers[idx].balance = userData.balance;
+            localStorage.setItem("platform_users", JSON.stringify(storedUsers));
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Firestore balance read notice:", err);
+    }
+
+    // Fallback: localStorage
     const users = JSON.parse(localStorage.getItem("platform_users") || "[]");
     const user = users.find((u: any) => u.id === userId);
     if (user && user.balance) {
