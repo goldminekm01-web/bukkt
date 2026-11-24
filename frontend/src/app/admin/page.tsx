@@ -223,33 +223,41 @@ export default function AdminDashboard() {
         });
         if (globalUsers.length > 0) setUsers(globalUsers); else { const lu = JSON.parse(localStorage.getItem('platform_users')||'[]'); setUsers(lu.map((u:any)=>({id:u.id||String(Math.random()),name:u.name||u.email||'User',email:u.email||'',phone:u.phone||'',createdAt:u.createdAt||'',balances:u.balance||{},walletAddress:u.walletAddress||''}))); }
 
-        // Fetch Global Visitors
-        const visitorsQ = query(collection(db, 'visitors'), orderBy('timestamp', 'desc'), limit(500));
-        const visitorsSnap = await getDocs(visitorsQ);
-        const globalVisitors: Visitor[] = [];
-        visitorsSnap.forEach((doc) => {
-          globalVisitors.push(doc.data() as Visitor);
-        });
-        setVisitors(globalVisitors);
-
-        // Fetch Global Withdrawals from Firestore
-        const withdrawalsQ = query(collection(db, 'withdrawals'), limit(500));
-        const withdrawalsSnap = await getDocs(withdrawalsQ);
-        withdrawalsSnap.forEach((doc) => {
-          const data = doc.data();
-          globalWithdrawals.push({
-            id: doc.id,
-            userId: data.userId || 'Unknown',
-            email: data.email || 'Unknown',
-            coin: data.coin || '',
-            amount: data.amount || 0,
-            address: data.address || '',
-            status: data.status || 'Pending',
-            date: data.date || new Date().toISOString()
+        // Fetch Global Visitors (isolated — failures must not clobber users state)
+        try {
+          const visitorsQ = query(collection(db, 'visitors'), orderBy('timestamp', 'desc'), limit(500));
+          const visitorsSnap = await getDocs(visitorsQ);
+          const globalVisitors: Visitor[] = [];
+          visitorsSnap.forEach((doc) => {
+            globalVisitors.push(doc.data() as Visitor);
           });
-        });
+          setVisitors(globalVisitors);
+        } catch (visErr) {
+          console.warn("Visitors fetch notice:", visErr);
+        }
+
+        // Fetch Global Withdrawals from Firestore (isolated)
+        try {
+          const withdrawalsQ = query(collection(db, 'withdrawals'), limit(500));
+          const withdrawalsSnap = await getDocs(withdrawalsQ);
+          withdrawalsSnap.forEach((doc) => {
+            const data = doc.data();
+            globalWithdrawals.push({
+              id: doc.id,
+              userId: data.userId || 'Unknown',
+              email: data.email || 'Unknown',
+              coin: data.coin || '',
+              amount: data.amount || 0,
+              address: data.address || '',
+              status: data.status || 'Pending',
+              date: data.date || new Date().toISOString()
+            });
+          });
+        } catch (wdErr) {
+          console.warn("Withdrawals fetch notice:", wdErr);
+        }
       } catch (err) {
-        console.error("Failed to fetch admin data from Firebase:", err);
+        console.error("Failed to fetch admin users from Firebase:", err);
         // If Firebase fetch fails, populate from local platform_users
         const localPlatformUsers = JSON.parse(localStorage.getItem('platform_users') || '[]');
         const fallbackUsers: User[] = localPlatformUsers.map((lu: any) => ({
