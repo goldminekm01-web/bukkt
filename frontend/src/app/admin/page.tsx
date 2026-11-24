@@ -556,7 +556,121 @@ export default function AdminDashboard() {
           
           {/* Left Column (Users & Deposits) */}
           <div className="space-y-8">
-            
+
+            {/* Blog Posts Section */}
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm p-6 space-y-4 flex flex-col">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-2">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <FileText size={18} className="text-indigo-400" /> Trading Insights Blog
+                  </h2>
+                  <p className="text-sm text-slate-400">Publish posts that appear on the main page.</p>
+                </div>
+                {blogStatus && (
+                  <span className="px-2 py-1 rounded text-xs font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {blogStatus}
+                  </span>
+                )}
+              </div>
+              <form onSubmit={handlePostBlog} className="space-y-3 flex flex-col gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Blog Title"
+                    value={blogTitle}
+                    onChange={(e) => setBlogTitle(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Short Excerpt"
+                    value={blogExcerpt}
+                    onChange={(e) => setBlogExcerpt(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <input
+                  type="url"
+                  placeholder="Image URL (Optional)"
+                  value={blogImage}
+                  onChange={(e) => setBlogImage(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <textarea
+                  required
+                  placeholder="Full Content..."
+                  rows={4}
+                  value={blogContent}
+                  onChange={(e) => setBlogContent(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold text-white transition-colors"
+                    >
+                      {editingBlogId ? "Update" : "Publish"}
+                    </button>
+                    {editingBlogId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBlogId(null);
+                          setBlogTitle("");
+                          setBlogExcerpt("");
+                          setBlogContent("");
+                          setBlogImage("");
+                          setBlogStatus("");
+                        }}
+                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-bold text-white transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                  {editingBlogId && (
+                    <span className="text-xs text-slate-500">Editing post</span>
+                  )}
+                </div>
+              </form>
+              <div className="mt-4 flex-1 overflow-y-auto space-y-2 border-t border-slate-700/50 pt-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Existing Posts</h3>
+                {adminBlogs.length === 0 ? (
+                  <div className="p-3 text-center text-slate-500 text-sm bg-slate-900/30 rounded-lg">
+                    No posts yet. Publish your first insight above.
+                  </div>
+                ) : (
+                  adminBlogs.map((b) => (
+                    <div
+                      key={b.id}
+                      className="flex items-center justify-between bg-slate-900/50 border border-slate-700/50 rounded-lg px-3 py-2 hover:bg-slate-900/80 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-200 truncate max-w-[200px]">{b.title}</span>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleEditBlog(b)}
+                          className="px-2 py-1 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 rounded hover:bg-indigo-500/20 transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBlog(b.id)}
+                          className="px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-red-500/10 rounded hover:bg-red-500/20 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
             {/* Users Table */}
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm">
               <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
@@ -868,6 +982,45 @@ export default function AdminDashboard() {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column (Visitor Traffic & Blog) */}
+          <div className="space-y-8">
+            {/* Visitor Traffic */}
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm h-full flex flex-col">
+              <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Globe size={18} className="text-cyan-400" /> Visitor Traffic
+                </h2>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium bg-slate-700 text-slate-300 px-2 py-1 rounded-md">Live</span>
+                  <button
+                    onClick={handleCleanupVisitors}
+                    disabled={cleanupStatus === 'Cleaning...'}
+                    className="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-md font-medium disabled:opacity-50 transition-colors"
+                  >
+                    {cleanupStatus === 'Cleaning...' ? 'Cleaning...' : 'Clean Old Logs'}
+                  </button>
+                  {cleanupStatus && cleanupStatus !== 'Cleaning...' && (
+                    <span className="text-xs text-slate-500">{cleanupStatus}</span>
+                  )}
+                </div>
+              </div>
+              <div className="p-6 flex-1 overflow-y-auto max-h-[600px] space-y-4">
+                {visitors.map((v, i) => (
+                  <div key={i} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/30">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-mono text-sm text-indigo-400">{v.ip}</span>
+                      <span className="text-xs text-slate-500">{new Date(v.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-slate-300">{v.country}</span>
+                      <span className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-xs font-mono">{v.page}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
