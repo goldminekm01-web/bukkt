@@ -61,9 +61,10 @@ export function AnalyticsTracker() {
           timestamp: new Date().toISOString(),
         };
 
-        // Write to Firestore instead of local storage
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-        await fetch(apiUrl + '/api/visitors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visit) });
+        // Write to Firestore
+        const { db } = await import('@/lib/firebase');
+        const { collection, addDoc } = await import('firebase/firestore');
+        await addDoc(collection(db, 'visitors'), visit);
         
       } catch (e) {
         // Silently fail if adblocker blocks analytics completely

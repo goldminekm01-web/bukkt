@@ -42,3 +42,4 @@ frontend/next-env.d.ts
 frontend/test_app.js
 frontend/test_app2.js
 frontend/screenshot.js
+.vercel

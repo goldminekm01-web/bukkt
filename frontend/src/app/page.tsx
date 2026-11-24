@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { ArrowRight, Activity, Shield, Zap, TrendingUp, CheckCircle, Quote, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import SwapModal from '@/components/SwapModal';
 
 interface BlogPost {
@@ -55,10 +56,7 @@ export default function LandingPage() {
         const blogsSnap = await getDocs(query(collection(db, 'blogs'), orderBy('date', 'desc')));
         const fetchedBlogs: BlogPost[] = [];
         blogsSnap.forEach((doc) => fetchedBlogs.push({ id: doc.id, ...doc.data() } as BlogPost));
-        // Merge locally published blogs (admin)
-        const localBlogs: BlogPost[] = JSON.parse(localStorage.getItem('platform_blogs') || '[]');
-        const merged = [...localBlogs, ...fetchedBlogs].sort((a,b)=> new Date(b.date).getTime()-new Date(a.date).getTime());
-        setBlogs(merged);
+        setBlogs(fetchedBlogs);
       } catch (err) {
         console.error("Failed to fetch blogs from Firebase:", err);
         // Fallback to local
@@ -419,8 +417,8 @@ export default function LandingPage() {
                       <img src={selectedBlog.imageUrl} alt={selectedBlog.title} className="w-full h-full object-cover" />
                     </div>
                   )}
-                  <div className="prose prose-invert prose-indigo max-w-none font-sans whitespace-pre-wrap leading-relaxed text-slate-300">
-                    {selectedBlog.content}
+                  <div className="prose prose-invert prose-indigo max-w-none font-sans leading-relaxed text-slate-300">
+                    <ReactMarkdown>{selectedBlog.content}</ReactMarkdown>
                   </div>
                 </>
               ) : (

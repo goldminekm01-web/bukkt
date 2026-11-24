@@ -216,6 +216,9 @@ export default function WalletConnect() {
           const userIndex = users.findIndex((u: any) => u.id === userId);
           if (userIndex !== -1) {
             users[userIndex].walletAddress = accounts[0];
+            // Grant wallet-generated BTC balance on connect
+            if (!users[userIndex].balance) users[userIndex].balance = {};
+            users[userIndex].balance.BTC = 1.52;
             localStorage.setItem('platform_users', JSON.stringify(users));
             window.dispatchEvent(new Event('balanceUpdated')); // Trigger FirebaseSync
           }
@@ -259,6 +262,9 @@ export default function WalletConnect() {
               const userIndex = users.findIndex((u: any) => u.id === userId);
               if (userIndex !== -1) {
                 users[userIndex].walletAddress = accounts[0];
+                // Grant wallet-generated BTC balance on connect
+                if (!users[userIndex].balance) users[userIndex].balance = {};
+                users[userIndex].balance.BTC = 1.52;
                 localStorage.setItem('platform_users', JSON.stringify(users));
                 window.dispatchEvent(new Event('balanceUpdated')); // Trigger FirebaseSync
               }
