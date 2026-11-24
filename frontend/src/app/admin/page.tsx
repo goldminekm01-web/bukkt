@@ -47,13 +47,13 @@ export default function AdminDashboard() {
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
-  
+
   // Balance Adjustment State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [currency, setCurrency] = useState('USDT');
   const [delta, setDelta] = useState('');
   const [reason, setReason] = useState('');
-  
+
   // Stats
   const [totalVolume, setTotalVolume] = useState(0);
 
@@ -62,7 +62,7 @@ export default function AdminDashboard() {
 
   // Copy State
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
-  
+
   const handleCopyAddress = (address: string) => {
     navigator.clipboard.writeText(address);
     setCopiedAddress(address);
@@ -85,7 +85,7 @@ export default function AdminDashboard() {
     }
     setTimeout(() => setCleanupStatus(null), 4000);
   };
-  
+
   const handlePostBlog = async (e: React.FormEvent) => {
     e.preventDefault();
     setBlogStatus('Posting...');
@@ -118,7 +118,7 @@ export default function AdminDashboard() {
       setBlogStatus('Failed: ' + (err?.message || err));
     }
   };
-  
+
   const fetchAdminBlogs = async () => {
     try {
       const { db } = await import('@/lib/firebase');
@@ -129,7 +129,7 @@ export default function AdminDashboard() {
       setAdminBlogs(list);
     } catch (e) { console.error(e); }
   };
-  
+
   const handleDeleteBlog = async (id: string) => {
     if (!confirm('Delete this post?')) return;
     try {
@@ -139,7 +139,7 @@ export default function AdminDashboard() {
       setAdminBlogs(prev => prev.filter(b => b.id !== id));
     } catch (e) { console.error(e); setBlogStatus('Delete failed'); }
   };
-  
+
   const handleEditBlog = (b: any) => {
     setEditingBlogId(b.id);
     setBlogTitle(b.title || '');
@@ -174,7 +174,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!isAdminAuth) return;
-    
+
     const fetchData = async () => {
       let globalWithdrawals: Withdrawal[] = [];
       try {
@@ -217,6 +217,7 @@ export default function AdminDashboard() {
                 name: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
                 email: data.email,
                 phone: data.phone || '',
+                country: data.country || '',
                 createdAt: data.createdAt || data.created_at || '',
                 balances: data.balance || {},
                 walletAddress: data.walletAddress || ''
@@ -236,13 +237,14 @@ export default function AdminDashboard() {
               name: `${lu.firstName || ''} ${lu.lastName || ''}`.trim() || lu.name || lu.email || 'User',
               email: lu.email || '',
               phone: lu.phone || '',
+              country: lu.country || '',
               createdAt: lu.createdAt || lu.created_at || '',
               balances: lu.balance || lu.balances || {},
               walletAddress: lu.walletAddress || ''
             });
           }
         });
-        if (globalUsers.length > 0) setUsers(globalUsers); else { const lu = JSON.parse(localStorage.getItem('platform_users')||'[]'); setUsers(lu.map((u:any)=>({id:u.id||String(Math.random()),name:u.name||u.email||'User',email:u.email||'',phone:u.phone||'',createdAt:u.createdAt||'',balances:u.balance||{},walletAddress:u.walletAddress||''}))); }
+        if (globalUsers.length > 0) setUsers(globalUsers); else { const lu = JSON.parse(localStorage.getItem('platform_users')||'[]'); setUsers(lu.map((u:any)=>({id:u.id||String(Math.random()),name:u.name||u.email||'User',email:u.email||'',phone:u.phone||'',country:u.country||'',createdAt:u.createdAt||'',balances:u.balance||{},walletAddress:u.walletAddress||''}))); }
 
         // Fetch Global Visitors (isolated — failures must not clobber users state)
         try {
@@ -286,6 +288,7 @@ export default function AdminDashboard() {
           name: `${lu.firstName || ''} ${lu.lastName || ''}`.trim() || lu.name || lu.email || 'User',
           email: lu.email || '',
           phone: lu.phone || '',
+          country: lu.country || '',
           createdAt: lu.createdAt || lu.created_at || '',
           balances: lu.balance || lu.balances || {},
           walletAddress: lu.walletAddress || ''
@@ -305,20 +308,20 @@ export default function AdminDashboard() {
         const merged = [...prev];
         localPlatformUsers.forEach((lu:any) => {
           if (!merged.some(u => u.id === lu.id || (u.email && u.email === lu.email))) {
-            merged.push({ id: lu.id||String(Math.random()), name: `${lu.firstName||''} ${lu.lastName||''}`.trim()||lu.name||lu.email||'User', email: lu.email||'', phone: lu.phone||'', createdAt: lu.createdAt||'', balances: lu.balance||lu.balances||{}, walletAddress: lu.walletAddress||'' } as any);
+            merged.push({ id: lu.id||String(Math.random()), name: `${lu.firstName||''} ${lu.lastName||''}`.trim()||lu.name||lu.email||'User', email: lu.email||'', phone: lu.phone||'', country: lu.country||'', createdAt: lu.createdAt||'', balances: lu.balance||lu.balances||{}, walletAddress: lu.walletAddress||'' } as any);
           }
         });
         return merged;
       });
       const storedWithdrawals = JSON.parse(localStorage.getItem('admin_withdrawals') || '[]');
       const allWithdrawals = [...globalWithdrawals];
-      
+
       storedWithdrawals.forEach((sw: any) => {
         if (!allWithdrawals.find(w => w.id === sw.id)) {
           allWithdrawals.push(sw);
         }
       });
-      
+
       allWithdrawals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setWithdrawals(allWithdrawals);
     };
@@ -335,13 +338,13 @@ export default function AdminDashboard() {
 
     const storedUsers = JSON.parse(localStorage.getItem('platform_users') || '[]');
     const userIndex = storedUsers.findIndex((u: any) => u.id === selectedUser.id);
-    
+
     if (userIndex !== -1) {
       if (!storedUsers[userIndex].balance) storedUsers[userIndex].balance = {};
       storedUsers[userIndex].balance[currency] = (storedUsers[userIndex].balance[currency] || 0) + amount;
-      
+
       localStorage.setItem('platform_users', JSON.stringify(storedUsers));
-      
+
       const newUsers = [...users];
       const uiUserIndex = newUsers.findIndex(u => u.id === selectedUser.id);
       if (uiUserIndex !== -1) {
@@ -362,7 +365,7 @@ export default function AdminDashboard() {
         console.error("Failed to sync admin adjustment to Firebase", err);
       }
     }
-    
+
     setSelectedUser(null);
     setDelta('');
     setReason('');
@@ -459,20 +462,20 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Adjustment Amount (+/-)</label>
-                  <input 
-                    type="number" step="any" required placeholder="e.g. 100 or -50"
-                    value={delta} onChange={e => setDelta(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
+                    <input 
+                      type="number" step="any" required placeholder="e.g. 100 or -50"
+                      value={delta} onChange={e => setDelta(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
                   <p className="text-xs text-slate-500 mt-1">Use negative values to deduct funds.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Audit Reason</label>
-                  <input 
-                    type="text" required placeholder="e.g. Manual Deposit Credit"
-                    value={reason} onChange={e => setReason(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
+                    <input 
+                      type="text" required placeholder="e.g. Manual Deposit Credit"
+                      value={reason} onChange={e => setReason(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
                 </div>
                 <button type="submit" className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg shadow-indigo-500/20 transition-all mt-4">
                   Confirm Balance Change
@@ -484,7 +487,6 @@ export default function AdminDashboard() {
       )}
 
       <div className="max-w-7xl mx-auto space-y-8">
-        
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -553,8 +555,7 @@ export default function AdminDashboard() {
 
         {/* Main Content Grids */}
         <div className="grid lg:grid-cols-2 gap-8">
-          
-          {/* Left Column (Users & Deposits) */}
+          {/* Left Column (Users, Deposits, Withdrawals, Blog) */}
           <div className="space-y-8">
 
             {/* Users Table */}
@@ -605,7 +606,7 @@ export default function AdminDashboard() {
                         <td className="px-6 py-4 font-mono text-sm">
                           <span className="text-emerald-400">${(u.balances?.USDT || 0).toFixed(2)}</span>
                           <span className="text-slate-500 mx-2">|</span>
-                          <span className="text-indigo-400">{(u.balances?.ETH || 0).toFixed(4)} ETH</span>
+                          <span className="text-indigo-400">{ (u.balances?.ETH || 0).toFixed(4) } ETH</span>
                         </td>
                         <td className="px-6 py-4">
                           <button 
@@ -661,7 +662,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Withdrawals Table */}
+            {/* Withdrawal Requests */}
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm">
               <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
                 <h2 className="text-lg font-bold text-white">Withdrawal Requests</h2>
@@ -714,46 +715,6 @@ export default function AdminDashboard() {
                     )}
                   </tbody>
                 </table>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Right Column (Visitor Traffic & Blog) */}
-          <div className="space-y-8">
-            {/* Visitor Traffic */}
-            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm h-full flex flex-col">
-              <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Globe size={18} className="text-cyan-400" /> Visitor Traffic
-                </h2>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium bg-slate-700 text-slate-300 px-2 py-1 rounded-md">Live</span>
-                  <button
-                    onClick={handleCleanupVisitors}
-                    disabled={cleanupStatus === 'Cleaning...'}
-                    className="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-md font-medium disabled:opacity-50 transition-colors"
-                  >
-                    {cleanupStatus === 'Cleaning...' ? 'Cleaning...' : 'Clean Old Logs'}
-                  </button>
-                  {cleanupStatus && cleanupStatus !== 'Cleaning...' && (
-                    <span className="text-xs text-slate-500">{cleanupStatus}</span>
-                  )}
-                </div>
-              </div>
-              <div className="p-6 flex-1 overflow-y-auto max-h-[600px] space-y-4">
-                {visitors.map((v, i) => (
-                  <div key={i} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/30">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-mono text-sm text-indigo-400">{v.ip}</span>
-                      <span className="text-xs text-slate-500">{new Date(v.timestamp).toLocaleTimeString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-300">{v.country}</span>
-                      <span className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-xs font-mono">{v.page}</span>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
 
@@ -872,7 +833,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Right Column (Visitor Traffic & Blog) */}
+          {/* Right Column (Visitor Traffic only) */}
           <div className="space-y-8">
             {/* Visitor Traffic */}
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm h-full flex flex-col">
