@@ -336,34 +336,27 @@ export default function AdminDashboard() {
     const amount = parseFloat(delta);
     if (isNaN(amount)) return;
 
-    const storedUsers = JSON.parse(localStorage.getItem('platform_users') || '[]');
-    const userIndex = storedUsers.findIndex((u: any) => u.id === selectedUser.id);
+    // Compute new balance from in-memory selectedUser state
+    const newBalances = { ...selectedUser.balances };
+    newBalances[currency] = (newBalances[currency] || 0) + amount;
 
-    if (userIndex !== -1) {
-      if (!storedUsers[userIndex].balance) storedUsers[userIndex].balance = {};
-      storedUsers[userIndex].balance[currency] = (storedUsers[userIndex].balance[currency] || 0) + amount;
+    // Update Firestore directly (shared source of truth)
+    try {
+      const { db } = await import('@/lib/firebase');
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const userRef = doc(db, 'users', selectedUser.id);
+      await updateDoc(userRef, { balance: newBalances });
+    } catch (err) {
+      console.error("Failed to sync admin adjustment to Firebase", err);
+      return;
+    }
 
-      localStorage.setItem('platform_users', JSON.stringify(storedUsers));
-
-      const newUsers = [...users];
-      const uiUserIndex = newUsers.findIndex(u => u.id === selectedUser.id);
-      if (uiUserIndex !== -1) {
-        newUsers[uiUserIndex].balances[currency] = storedUsers[userIndex].balance[currency];
-        setUsers(newUsers);
-      }
-
-      // Sync the change to Firestore
-      try {
-        const { db } = await import('@/lib/firebase');
-        const { doc, updateDoc, getDoc } = await import('firebase/firestore');
-        const userRef = doc(db, 'users', selectedUser.id);
-        const docSnap = await getDoc(userRef);
-        if (docSnap.exists()) {
-          await updateDoc(userRef, { balance: storedUsers[userIndex].balance });
-        }
-      } catch (err) {
-        console.error("Failed to sync admin adjustment to Firebase", err);
-      }
+    // Update local users state so admin dashboard reflects immediately
+    const newUsers = [...users];
+    const uiUserIndex = newUsers.findIndex(u => u.id === selectedUser.id);
+    if (uiUserIndex !== -1) {
+      newUsers[uiUserIndex].balances = newBalances;
+      setUsers(newUsers);
     }
 
     setSelectedUser(null);
