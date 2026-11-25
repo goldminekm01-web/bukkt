@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ChevronDown, Menu, X, Wallet, TrendingUp, ArrowDownToLine, ArrowUpRight, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, Menu, X, Wallet, TrendingUp, ArrowDownToLine, ArrowUpRight, Eye, EyeOff, Image, User, Phone, Mail } from "lucide-react";
 
 import WalletConnect from "@/components/WalletConnect";
 import OrderBook from "@/components/OrderBook";
@@ -35,6 +35,18 @@ export default function DashboardPage() {
   const [showBalance, setShowBalance] = useState(true);
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [totalValue, setTotalValue] = useState(0);
+
+  // Profile state
+  const [userProfile, setUserProfile] = useState<{
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    country: string;
+    photoURL: string;
+  } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileImage, setProfileImage] = useState<File | null>(null);
 
   // Price map for portfolio valuation
   const [priceMap, setPriceMap] = useState<Record<string, number>>({});
@@ -118,6 +130,53 @@ export default function DashboardPage() {
     }
   };
 
+  // Load user profile from Firestore
+  const loadProfile = async () => {
+    const userId = localStorage.getItem("token");
+    if (!userId) return;
+    setProfileLoading(true);
+    try {
+      const { db } = await import("@/lib/firebase");
+      const { doc, getDoc } = await import("firebase/firestore");
+      const userDoc = await getDoc(doc(db, "users", userId));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        setUserProfile({
+          email: data?.email || "",
+          firstName: data?.firstName || "",
+          lastName: data?.lastName || "",
+          phone: data?.phone || "",
+          country: data?.country || "",
+          photoURL: data?.photoURL || "",
+        });
+      }
+    } catch (err) {
+      console.warn("Profile load notice:", err);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  // Upload profile picture to Firebase Storage
+  const uploadProfileImage = async (file: File) => {
+    const userId = localStorage.getItem("token");
+    if (!userId) return;
+    try {
+      const { storage } = await import("@/lib/firebase");
+      const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
+      const storageRef = ref(storage, `profile_pics/${userId}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      // Update Firestore with photoURL
+      const { db } = await import("@/lib/firebase");
+      const { doc, updateDoc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", userId), { photoURL: url });
+      setUserProfile((prev) => (prev ? { ...prev, photoURL: url } : null));
+    } catch (err) {
+      console.error("Profile image upload error:", err);
+    }
+  };
+
   // Fetch prices for portfolio valuation
   const fetchPrices = async () => {
     try {
@@ -149,6 +208,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadBalances();
+    loadProfile();
     fetchPrices();
     window.addEventListener("balanceUpdated", () => {
       loadBalances();
@@ -332,6 +392,66 @@ export default function DashboardPage() {
         <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
         <DepositModal isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} />
       </header>
+
+      {/* Profile Section */}
+      <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm p-6 mx-4 mb-6">
+        <div className="flex items-center gap-6">
+          <div className="relative">
+            {userProfile?.photoURL ? (
+              <img
+                src={userProfile.photoURL}
+                alt="Profile"
+                className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-indigo-500/20 flex items-center justify-center border-2 border-indigo-500/30">
+                <User size={24} className="text-indigo-400" />
+              </div>
+            )}
+            {profileImage && (
+              <div className="absolute -bottom-1 -right-1 flex items-center justify-center w-6 h-6">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      setProfileImage(e.target.files[0]);
+                      uploadProfileImage(e.target.files[0]);
+                    }
+                  }}
+                />
+                <label
+                  className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs cursor-pointer hover:bg-indigo-500"
+                  onClick={() => {
+                    const input = document.querySelector('input[type="file"]');
+                    if (input instanceof HTMLInputElement) input.click();
+                  }}
+                >
+                  <Image size={14} />
+                </label>
+              </div>
+            )}
+          </div>
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-white">{userProfile?.firstName || ""} {userProfile?.lastName || ""}</h2>
+            <p className="text-slate-400">{userProfile?.email || "No email"}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <Phone size={14} className="text-slate-500" />
+              <span className="text-slate-300 text-sm">{userProfile?.phone || <span className="text-slate-500 italic">No phone</span>}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <Mail size={14} className="text-slate-500" />
+              <span className="text-slate-300 text-sm">{userProfile?.country || <span className="text-slate-500 italic">Unknown</span>}</span>
+            </div>
+          </div>
+          {profileLoading && (
+            <div className="flex items-center gap-2 text-indigo-400 text-xs animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-indigo-400"></span> Updating...
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Mobile Menu */}
       {showMobileMenu && (
