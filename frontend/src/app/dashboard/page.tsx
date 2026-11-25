@@ -47,6 +47,14 @@ export default function DashboardPage() {
   } | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<File | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  // Edit profile state
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editCountry, setEditCountry] = useState("");
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [saveLoading, setSaveLoading] = useState(false);
 
   // Price map for portfolio valuation
   const [priceMap, setPriceMap] = useState<Record<string, number>>({});
@@ -176,6 +184,45 @@ export default function DashboardPage() {
       console.error("Profile image upload error:", err);
     }
   };
+
+  // Update user profile details in Firestore
+  const updateProfile = async () => {
+    const userId = localStorage.getItem("token");
+    if (!userId) return;
+    setSaveLoading(true);
+    try {
+      const { db } = await import("@/lib/firebase");
+      const { doc, updateDoc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", userId), {
+        email: editEmail,
+        phone: editPhone,
+        country: editCountry,
+        firstName: editFirstName,
+        lastName: editLastName,
+      });
+      setUserProfile((prev) => (prev
+        ? { ...prev, email: editEmail, phone: editPhone, country: editCountry, firstName: editFirstName, lastName: editLastName }
+        : null));
+      setProfileMenuOpen(false);
+    } catch (err) {
+      console.error("Profile update error:", err);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const openProfileMenu = () => {
+    if (userProfile) {
+      setEditEmail(userProfile.email);
+      setEditPhone(userProfile.phone);
+      setEditCountry(userProfile.country);
+      setEditFirstName(userProfile.firstName);
+      setEditLastName(userProfile.lastName);
+    }
+    setProfileMenuOpen(true);
+  };
+
+  const closeProfileMenu = () => setProfileMenuOpen(false);
 
   // Fetch prices for portfolio valuation
   const fetchPrices = async () => {
@@ -360,98 +407,94 @@ export default function DashboardPage() {
               <WalletConnect />
             </ErrorBoundary>
 
-            <button
-              onClick={async () => {
-                try {
-                  const { auth } = await import("@/lib/firebase");
-                  await auth.signOut();
-                } catch (e) {
-                  console.error(e);
-                }
-                localStorage.removeItem("token");
-                localStorage.removeItem("user_email");
-                sessionStorage.removeItem("admin_auth");
-                router.push("/login");
-              }}
-              className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
-            >
-              Log Out
-            </button>
-          </div>
+            {/* Profile Menu Trigger */}
+            <div className="relative">
+              <button
+                onClick={openProfileMenu}
+                className="flex items-center gap-2 bg-[#1a1f2b] hover:bg-[#252b3b] text-slate-200 border border-slate-700 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+              >
+                <div className="relative">
+                  {userProfile?.photoURL ? (
+                    <img
+                      src={userProfile.photoURL}
+                      alt="Profile"
+                      className="w-8 h-8 rounded-full object-cover border border-slate-600"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+                      <User size={20} className="text-indigo-400" />
+                    </div>
+                  )}
+                </div>
+                <span className="hidden sm:inline">{userProfile?.firstName || "Profile"}</span>
+                <ChevronDown size={14} className="text-slate-400 ml-1" />
+              </button>
 
-          {/* Mobile Hamburger */}
-          <button
-            className="md:hidden p-2 text-slate-400 hover:text-white transition-colors"
-            onClick={() => setShowMobileMenu(!showMobileMenu)}
-          >
-            {showMobileMenu ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
+              {/* Profile Dropdown */}
+              {profileMenuOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-[#151920] border border-slate-800 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2">
+                  <div className="p-4 border-b border-slate-800">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="relative">
+                        {userProfile?.photoURL ? (
+                          <img
+                            src={userProfile.photoURL}
+                            alt="Profile"
+                            className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center border-2 border-indigo-500/30">
+                            <User size={24} className="text-indigo-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-white font-semibold">{userProfile?.firstName || ""} {userProfile?.lastName || ""}</h3>
+                        <p className="text-xs text-slate-400">{userProfile?.email || "No email"}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 space-y-1">
+                    <button
+                      onClick={() => { setProfileMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+                    >
+                      <Image size={16} className="text-indigo-400" />
+                      Edit Profile
+                    </button>
+                    <hr className="border-slate-800 my-2" />
+                    <button
+                      onClick={async () => {
+                        try {
+                          const { auth } = await import("@/lib/firebase");
+                          await auth.signOut();
+                        } catch (e) {
+                          console.error(e);
+                        }
+                        localStorage.removeItem("token");
+                        localStorage.removeItem("user_email");
+                        sessionStorage.removeItem("admin_auth");
+                        router.push("/login");
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                    >
+                      <X size={16} className="text-red-500" />
+                      Log Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <ErrorBoundary>
+              <WalletConnect />
+            </ErrorBoundary>
+          </div>
 
         {/* Modals */}
         <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
         <DepositModal isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} />
       </header>
-
-      {/* Profile Section */}
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm p-6 mx-4 mb-6">
-        <div className="flex items-center gap-6">
-          <div className="relative">
-            {userProfile?.photoURL ? (
-              <img
-                src={userProfile.photoURL}
-                alt="Profile"
-                className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500"
-              />
-            ) : (
-              <div className="w-20 h-20 rounded-full bg-indigo-500/20 flex items-center justify-center border-2 border-indigo-500/30">
-                <User size={24} className="text-indigo-400" />
-              </div>
-            )}
-            {profileImage && (
-              <div className="absolute -bottom-1 -right-1 flex items-center justify-center w-6 h-6">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      setProfileImage(e.target.files[0]);
-                      uploadProfileImage(e.target.files[0]);
-                    }
-                  }}
-                />
-                <label
-                  className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs cursor-pointer hover:bg-indigo-500"
-                  onClick={() => {
-                    const input = document.querySelector('input[type="file"]');
-                    if (input instanceof HTMLInputElement) input.click();
-                  }}
-                >
-                  <Image size={14} />
-                </label>
-              </div>
-            )}
-          </div>
-          <div className="flex-1">
-            <h2 className="text-xl font-bold text-white">{userProfile?.firstName || ""} {userProfile?.lastName || ""}</h2>
-            <p className="text-slate-400">{userProfile?.email || "No email"}</p>
-            <div className="flex items-center gap-2 mt-1">
-              <Phone size={14} className="text-slate-500" />
-              <span className="text-slate-300 text-sm">{userProfile?.phone || <span className="text-slate-500 italic">No phone</span>}</span>
-            </div>
-            <div className="flex items-center gap-2 mt-1">
-              <Mail size={14} className="text-slate-500" />
-              <span className="text-slate-300 text-sm">{userProfile?.country || <span className="text-slate-500 italic">Unknown</span>}</span>
-            </div>
-          </div>
-          {profileLoading && (
-            <div className="flex items-center gap-2 text-indigo-400 text-xs animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-indigo-400"></span> Updating...
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Mobile Menu */}
       {showMobileMenu && (
