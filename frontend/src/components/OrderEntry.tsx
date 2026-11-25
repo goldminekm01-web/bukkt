@@ -74,6 +74,16 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
     const userId = localStorage.getItem("token");
     if (!userId) return;
 
+    // Sign in anonymously so Firestore reads pass `request.auth != null` rule
+    try {
+      const { auth } = await import("@/lib/firebase");
+      const { signInAnonymously } = await import("firebase/auth");
+      await signInAnonymously(auth);
+    } catch (authErr) {
+      // Already signed in or anonymous auth disabled — proceed anyway
+      console.warn("Anonymous sign-in notice:", authErr);
+    }
+
     try {
       const { db } = await import("@/lib/firebase");
       const { doc, getDoc } = await import("firebase/firestore");
