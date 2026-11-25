@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<File | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
   // Edit profile state
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -203,7 +204,7 @@ export default function DashboardPage() {
       setUserProfile((prev) => (prev
         ? { ...prev, email: editEmail, phone: editPhone, country: editCountry, firstName: editFirstName, lastName: editLastName }
         : null));
-      setProfileMenuOpen(false);
+      setEditProfileOpen(false);
     } catch (err) {
       console.error("Profile update error:", err);
     } finally {
@@ -472,6 +473,8 @@ export default function DashboardPage() {
                       setEditCountry(userProfile?.country || "");
                       setEditFirstName(userProfile?.firstName || "");
                       setEditLastName(userProfile?.lastName || "");
+                      setProfileMenuOpen(false);
+                      setEditProfileOpen(true);
                     }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
                   >
@@ -508,7 +511,7 @@ export default function DashboardPage() {
         <DepositModal isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} />
 
         {/* Edit Profile Modal */}
-        {profileMenuOpen && (
+        {editProfileOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeProfileMenu} />
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative z-10">
