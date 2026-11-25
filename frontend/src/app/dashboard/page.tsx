@@ -378,119 +378,104 @@ export default function DashboardPage() {
         <div className="flex items-center gap-4">
           <div className="hidden md:flex items-center gap-2">
             <SwapModal />
-            <div className="relative">
-              <button
-                onClick={() => setShowActions(!showActions)}
-                className="flex items-center gap-2 bg-[#1a1f2b] hover:bg-[#252b3b] text-slate-200 border border-slate-700 px-4 py-2 rounded-md text-sm font-semibold transition-colors"
-              >
-                Manage Funds <ChevronDown size={16} className={`text-slate-400 transition-transform ${showActions ? "rotate-180" : ""}`} />
-              </button>
-              {showActions && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-[#151920] border border-slate-700 rounded-lg shadow-xl py-1 z-50">
-                  <button
-                    onClick={() => { setIsDepositOpen(true); setShowActions(false); }}
-                    className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors flex items-center gap-2"
-                  >
-                    <ArrowDownToLine size={14} /> Deposit Crypto
-                  </button>
-                  <button
-                    onClick={() => { setIsWithdrawOpen(true); setShowActions(false); }}
-                    className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors flex items-center gap-2"
-                  >
-                    <ArrowUpRight size={14} /> Withdraw Crypto
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <ErrorBoundary>
-              <WalletConnect />
-            </ErrorBoundary>
-
-            {/* Profile Menu Trigger */}
-            <div className="relative">
-              <button
-                onClick={openProfileMenu}
-                className="flex items-center gap-2 bg-[#1a1f2b] hover:bg-[#252b3b] text-slate-200 border border-slate-700 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-              >
-                <div className="relative">
-                  {userProfile?.photoURL ? (
-                    <img
-                      src={userProfile.photoURL}
-                      alt="Profile"
-                      className="w-8 h-8 rounded-full object-cover border border-slate-600"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
-                      <User size={20} className="text-indigo-400" />
-                    </div>
-                  )}
-                </div>
-                <span className="hidden sm:inline">{userProfile?.firstName || "Profile"}</span>
-                <ChevronDown size={14} className="text-slate-400 ml-1" />
-              </button>
-
-              {/* Profile Dropdown */}
-              {profileMenuOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-[#151920] border border-slate-800 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="p-4 border-b border-slate-800">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="relative">
-                        {userProfile?.photoURL ? (
-                          <img
-                            src={userProfile.photoURL}
-                            alt="Profile"
-                            className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center border-2 border-indigo-500/30">
-                            <User size={24} className="text-indigo-400" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-white font-semibold">{userProfile?.firstName || ""} {userProfile?.lastName || ""}</h3>
-                        <p className="text-xs text-slate-400">{userProfile?.email || "No email"}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 space-y-1">
-                    <button
-                      onClick={() => { setProfileMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
-                    >
-                      <Image size={16} className="text-indigo-400" />
-                      Edit Profile
-                    </button>
-                    <hr className="border-slate-800 my-2" />
-                    <button
-                      onClick={async () => {
-                        try {
-                          const { auth } = await import("@/lib/firebase");
-                          await auth.signOut();
-                        } catch (e) {
-                          console.error(e);
-                        }
-                        localStorage.removeItem("token");
-                        localStorage.removeItem("user_email");
-                        sessionStorage.removeItem("admin_auth");
-                        router.push("/login");
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                    >
-                      <X size={16} className="text-red-500" />
-                      Log Out
-                    </button>
-                  </div>
-                </div>
-              )} 
-            </div>
-          </div>
-
             <ErrorBoundary>
               <WalletConnect />
             </ErrorBoundary>
           </div>
+
+          {/* Profile Menu Trigger */}
+          <div className="relative">
+            <button
+              onClick={openProfileMenu}
+              className="flex items-center gap-2 bg-[#1a1f2b] hover:bg-[#252b3b] text-slate-200 border border-slate-700 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            >
+              <div className="relative">
+                {userProfile?.photoURL ? (
+                  <img
+                    src={userProfile.photoURL}
+                    alt="Profile"
+                    className="w-8 h-8 rounded-full object-cover border border-slate-600"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+                    <User size={20} className="text-indigo-400" />
+                  </div>
+                )}
+              </div>
+              <span className="hidden sm:inline">{userProfile?.firstName || "Profile"}</span>
+              <ChevronDown size={14} className="text-slate-400 ml-1" />
+            </button>
+
+            {/* Profile Dropdown */}
+            {profileMenuOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-[#151920] border border-slate-800 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2">
+                <div className="p-4 border-b border-slate-800">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative">
+                      {userProfile?.photoURL ? (
+                        <img
+                          src={userProfile.photoURL}
+                          alt="Profile"
+                          className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center border-2 border-indigo-500/30">
+                          <User size={24} className="text-indigo-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-white font-semibold">{userProfile?.firstName || ""} {userProfile?.lastName || ""}</h3>
+                      <p className="text-xs text-slate-400">{userProfile?.email || "No email"}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-3 space-y-1">
+                  <button
+                    onClick={() => setShowActions(true)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+                  >
+                    <ArrowDownToLine size={16} className="text-indigo-400" />
+                    Manage Funds
+                  </button>
+                  <hr className="border-slate-800 my-2" />
+                  <button
+                    onClick={() => {
+                      setEditEmail(userProfile?.email || "");
+                      setEditPhone(userProfile?.phone || "");
+                      setEditCountry(userProfile?.country || "");
+                      setEditFirstName(userProfile?.firstName || "");
+                      setEditLastName(userProfile?.lastName || "");
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+                  >
+                    <Image size={16} className="text-indigo-400" />
+                    Edit Profile
+                  </button>
+                  <hr className="border-slate-800 my-2" />
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { auth } = await import("@/lib/firebase");
+                        await auth.signOut();
+                      } catch (e) {
+                        console.error(e);
+                      }
+                      localStorage.removeItem("token");
+                      localStorage.removeItem("user_email");
+                      sessionStorage.removeItem("admin_auth");
+                      router.push("/login");
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                  >
+                    <X size={16} className="text-red-500" />
+                    Log Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Modals */}
         <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
