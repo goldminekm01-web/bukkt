@@ -22,6 +22,17 @@ interface OpenOrder {
   status: "open" | "partially_filled" | "filled" | "cancelled";
 }
 
+interface TradeRecord {
+  timestamp: number;
+  pair: string;
+  side: "buy" | "sell";
+  type: string;
+  price: number;
+  amount: number;
+  fee: number;
+  total: number;
+}
+
 export default function OrderEntry({ symbol }: OrderEntryProps) {
   const [activeTab, setActiveTab] = useState<TabType>("limit");
   const [side, setSide] = useState<SideType>("buy");
@@ -58,9 +69,35 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
     }
   };
 
-  const loadBalances = () => {
+  // Load balances from Firestore first (shared source of truth — admin adjustments write here)
+  const loadBalances = async () => {
     const userId = localStorage.getItem("token");
     if (!userId) return;
+
+    try {
+      const { db } = await import("@/lib/firebase");
+      const { doc, getDoc } = await import("firebase/firestore");
+      const userDoc = await getDoc(doc(db, "users", userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        if (userData && userData.balance) {
+          setUsdtBalance(userData.balance.USDT || 0);
+          setBaseBalance(userData.balance[baseAsset] || 0);
+          // Hydrate localStorage for other components
+          const users = JSON.parse(localStorage.getItem("platform_users") || "[]");
+          const idx = users.findIndex((u: any) => u.id === userId);
+          if (idx !== -1) {
+            users[idx].balance = userData.balance;
+            localStorage.setItem("platform_users", JSON.stringify(users));
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Firestore balance read notice:", err);
+    }
+
+    // Fallback: localStorage
     const users = JSON.parse(localStorage.getItem("platform_users") || "[]");
     const user = users.find((u: any) => u.id === userId);
     if (user && user.balance) {
@@ -69,15 +106,48 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
     }
   };
 
-  useEffect(() => {
-    fetchMarketPrice();
-    loadBalances();
-    const interval = setInterval(() => {
-      fetchMarketPrice();
-      loadBalances();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [symbol]);
+  // Persist updated balance to Firestore and localStorage
+  const saveBalances = async (newBalance: Record<string, number>) => {
+    const userId = localStorage.getItem("token");
+    if (!userId) return;
+
+    try {
+      const { db } = await import("@/lib/firebase");
+      const { doc, updateDoc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", userId), { balance: newBalance });
+    } catch (err) {
+      console.error("Firestore balance write error:", err);
+    }
+
+    const users = JSON.parse(localStorage.getItem("platform_users") || "[]");
+    const idx = users.findIndex((u: any) => u.id === userId);
+    if (idx !== -1) {
+      users[idx].balance = newBalance;
+      localStorage.setItem("platform_users", JSON.stringify(users));
+    }
+    window.dispatchEvent(new Event("balanceUpdated"));
+  };
+
+  const appendTradeHistory = (trade: TradeRecord) => {
+    const history = JSON.parse(localStorage.getItem("trade_history") || "[]");
+    history.push(trade);
+    localStorage.setItem("trade_history", JSON.stringify(history));
+    window.dispatchEvent(new Event("balanceUpdated"));
+  };
+
+  const appendOpenOrder = (order: OpenOrder) => {
+    const orders = JSON.parse(localStorage.getItem("open_orders") || "[]");
+    orders.push(order);
+    localStorage.setItem("open_orders", JSON.stringify(orders));
+    window.dispatchEvent(new Event("ordersUpdated"));
+  };
+
+  const removeOpenOrder = (orderId: string) => {
+    const orders = JSON.parse(localStorage.getItem("open_orders") || "[]");
+    const filtered = orders.filter((o: OpenOrder) => o.id !== orderId);
+    localStorage.setItem("open_orders", JSON.stringify(filtered));
+    window.dispatchEvent(new Event("ordersUpdated"));
+  };
 
   const totalCost = (parseFloat(price) * parseFloat(amount) || 0);
   const fee = totalCost * 0.001;
@@ -88,7 +158,7 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
     setAmount("");
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (!amount) return;
     const parsedAmount = parseFloat(amount);
     const parsedPrice = activeTab === "limit" ? parseFloat(price) : parseFloat(marketPrice || "0");
@@ -119,11 +189,29 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
         alert(`Insufficient USDT balance. Required: ${requiredUSDT.toFixed(2)} USDT, Available: ${(balance.USDT || 0).toFixed(2)} USDT`);
         return;
       }
-      // Hold the funds for limit orders, execute market orders immediately
+
       if (activeTab === "market") {
+        // Execute immediately at market price
         balance.USDT = (balance.USDT || 0) - requiredUSDT;
         balance[baseAsset] = (balance[baseAsset] || 0) + parsedAmount;
-        recordTrade(parsedPrice, parsedAmount, "buy", activeTab, balance, userIndex, users);
+        await saveBalances(balance);
+        const trade: TradeRecord = {
+          timestamp: Date.now(),
+          pair: symbol,
+          side: "buy",
+          type: "market",
+          price: parsedPrice,
+          amount: parsedAmount,
+          fee: parsedPrice * parsedAmount * 0.001,
+          total: parsedPrice * parsedAmount + parsedPrice * parsedAmount * 0.001,
+        };
+        appendTradeHistory(trade);
+        alert(`Bought ${parsedAmount.toFixed(6)} ${baseAsset} at $${parsedPrice.toFixed(2)}`);
+      } else {
+        // Hold funds for limit order
+        balance.USDT = (balance.USDT || 0) - requiredUSDT;
+        await saveBalances(balance);
+        placeLimitOrder(parsedPrice, parsedAmount, balance, userIndex, users);
       }
     } else {
       // Sell
@@ -136,46 +224,28 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
         const proceeds = parsedPrice * parsedAmount * 0.999;
         balance[baseAsset] = (balance[baseAsset] || 0) - parsedAmount;
         balance.USDT = (balance.USDT || 0) + proceeds;
-        recordTrade(parsedPrice, parsedAmount, "sell", activeTab, balance, userIndex, users);
+        await saveBalances(balance);
+        const trade: TradeRecord = {
+          timestamp: Date.now(),
+          pair: symbol,
+          side: "sell",
+          type: "market",
+          price: parsedPrice,
+          amount: parsedAmount,
+          fee: parsedPrice * parsedAmount * 0.001,
+          total: parsedPrice * parsedAmount - parsedPrice * parsedAmount * 0.001,
+        };
+        appendTradeHistory(trade);
+        alert(`Sold ${parsedAmount.toFixed(6)} ${baseAsset} at $${parsedPrice.toFixed(2)}`);
+      } else {
+        // Hold base asset for limit order
+        balance[baseAsset] = (balance[baseAsset] || 0) - parsedAmount;
+        await saveBalances(balance);
+        placeLimitOrder(parsedPrice, parsedAmount, balance, userIndex, users);
       }
     }
 
-    if (activeTab === "limit") {
-      placeLimitOrder(parsedPrice, parsedAmount, balance, userIndex, users);
-    }
-
     resetForm();
-  };
-
-  const recordTrade = (
-    execPrice: number,
-    tradeAmount: number,
-    tradeSide: "buy" | "sell",
-    orderType: "limit" | "market",
-    balance: Record<string, number>,
-    userIndex: number,
-    users: any[]
-  ) => {
-    const tradeHistory = JSON.parse(localStorage.getItem("trade_history") || "[]");
-    const fee = execPrice * tradeAmount * 0.001;
-
-    tradeHistory.push({
-      timestamp: Date.now(),
-      pair: symbol,
-      side: tradeSide,
-      type: orderType,
-      price: execPrice,
-      amount: tradeAmount,
-      fee: fee,
-      total: tradeSide === "buy"
-        ? execPrice * tradeAmount + fee
-        : execPrice * tradeAmount - fee,
-    });
-    localStorage.setItem("trade_history", JSON.stringify(tradeHistory));
-
-    users[userIndex].balance = balance;
-    localStorage.setItem("platform_users", JSON.stringify(users));
-    window.dispatchEvent(new Event("balanceUpdated"));
   };
 
   const placeLimitOrder = (
@@ -199,7 +269,6 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
       status: "open",
     };
 
-    // Save to open orders in user profile
     const existingOrders: OpenOrder[] = JSON.parse(localStorage.getItem("open_orders") || "[]");
     existingOrders.push(newOrder);
     localStorage.setItem("open_orders", JSON.stringify(existingOrders));
@@ -211,6 +280,78 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
 
     alert(`${side === "buy" ? "Buy" : "Sell"} limit order placed! Order ID: ${orderId.slice(0, 8)}`);
   };
+
+  // Auto-execute limit orders when market price reaches the limit price
+  useEffect(() => {
+    if (!marketPrice) return;
+
+    const userId = localStorage.getItem("token");
+    if (!userId) return;
+
+    const users = JSON.parse(localStorage.getItem("platform_users") || "[]");
+    const userIndex = users.findIndex((u: any) => u.id === userId);
+    if (userIndex === -1) return;
+
+    const user = users[userIndex];
+    const orders = JSON.parse(localStorage.getItem("open_orders") || "[]");
+    const currentPrice = parseFloat(marketPrice);
+    let changed = false;
+
+    const updatedOrders = orders.filter((order: OpenOrder) => {
+      if (order.pair !== symbol || order.status !== "open") return true;
+
+      let shouldExecute = false;
+      if (order.side === "buy" && currentPrice <= order.price) {
+        shouldExecute = true;
+      }
+      if (order.side === "sell" && currentPrice >= order.price) {
+        shouldExecute = true;
+      }
+
+      if (shouldExecute) {
+        changed = true;
+        const balance = { ...(user.balance || {}) };
+        const execPrice = order.price;
+        const execAmount = order.amount;
+        const fee = execPrice * execAmount * 0.001;
+
+        if (order.side === "buy") {
+          balance.USDT = (balance.USDT || 0) - (execPrice * execAmount + fee);
+          balance[baseAsset] = (balance[baseAsset] || 0) + execAmount;
+        } else {
+          balance[baseAsset] = (balance[baseAsset] || 0) - execAmount;
+          balance.USDT = (balance.USDT || 0) + (execPrice * execAmount - fee);
+        }
+
+        user.balance = balance;
+        changed = true;
+
+        const trade: TradeRecord = {
+          timestamp: Date.now(),
+          pair: symbol,
+          side: order.side,
+          type: "limit",
+          price: execPrice,
+          amount: execAmount,
+          fee,
+          total: order.side === "buy"
+            ? execPrice * execAmount + fee
+            : execPrice * execAmount - fee,
+        };
+        appendTradeHistory(trade);
+        alert(`Limit order executed! ${order.side === "buy" ? "Bought" : "Sold"} ${execAmount.toFixed(6)} ${baseAsset} at $${execPrice.toFixed(2)}`);
+      }
+
+      return !shouldExecute;
+    });
+
+    if (changed) {
+      localStorage.setItem("platform_users", JSON.stringify(users));
+      localStorage.setItem("open_orders", JSON.stringify(updatedOrders));
+      saveBalances(user.balance);
+      window.dispatchEvent(new Event("ordersUpdated"));
+    }
+  }, [marketPrice, symbol, baseAsset]);
 
   return (
     <div className="flex flex-col h-full">
@@ -392,7 +533,7 @@ export default function OrderEntry({ symbol }: OrderEntryProps) {
       {/* Limit Order Info */}
       {activeTab === "limit" && (
         <div className="px-3 mb-2 text-xs text-slate-500 text-center italic">
-          Limit orders are placed in the order book and execute when the price is reached.
+          Limit orders execute automatically when the market price reaches your limit.
         </div>
       )}
     </div>
