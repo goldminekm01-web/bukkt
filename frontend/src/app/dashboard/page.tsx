@@ -224,6 +224,26 @@ export default function DashboardPage() {
 
   const closeProfileMenu = () => setProfileMenuOpen(false);
 
+  // Close profile dropdown on Escape key or click outside
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeProfileMenu();
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!document.getElementById("profile-menu-trigger")?.contains(target) &&
+          !document.getElementById("profile-dropdown")?.contains(target)) {
+        closeProfileMenu();
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+      window.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   // Fetch prices for portfolio valuation
   const fetchPrices = async () => {
     try {
@@ -386,6 +406,7 @@ export default function DashboardPage() {
           {/* Profile Menu Trigger */}
           <div className="relative">
             <button
+              id="profile-menu-trigger"
               onClick={openProfileMenu}
               className="flex items-center gap-2 bg-[#1a1f2b] hover:bg-[#252b3b] text-slate-200 border border-slate-700 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
@@ -408,7 +429,7 @@ export default function DashboardPage() {
 
             {/* Profile Dropdown */}
             {profileMenuOpen && (
-              <div className="absolute right-0 mt-2 w-72 bg-[#151920] border border-slate-800 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2">
+              <div id="profile-dropdown" className="absolute right-0 mt-2 w-72 bg-[#151920] border border-slate-800 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="p-4 border-b border-slate-800">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="relative">
@@ -427,6 +448,11 @@ export default function DashboardPage() {
                     <div className="flex-1">
                       <h3 className="text-white font-semibold">{userProfile?.firstName || ""} {userProfile?.lastName || ""}</h3>
                       <p className="text-xs text-slate-400">{userProfile?.email || "No email"}</p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-xs text-slate-500">{userProfile?.country || "Unknown"}</span>
+                        <span className="text-xs text-slate-500">|</span>
+                        <span className="text-xs text-slate-500">{userProfile?.phone || "No phone"}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -480,6 +506,97 @@ export default function DashboardPage() {
         {/* Modals */}
         <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
         <DepositModal isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} />
+
+        {/* Edit Profile Modal */}
+        {profileMenuOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeProfileMenu} />
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative z-10">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-white font-semibold text-lg">Edit Profile</h3>
+                <button
+                  onClick={closeProfileMenu}
+                  className="text-slate-400 hover:text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={(e) => { e.preventDefault(); updateProfile(); }} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">First Name</label>
+                  <input
+                    type="text"
+                    value={editFirstName}
+                    onChange={(e) => setEditFirstName(e.target.value)}
+                    className="w-full bg-[#11141a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Last Name</label>
+                  <input
+                    type="text"
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                    className="w-full bg-[#11141a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Email</label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full bg-[#11141a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Phone</label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full bg-[#11141a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Country</label>
+                  <input
+                    type="text"
+                    value={editCountry}
+                    onChange={(e) => setEditCountry(e.target.value)}
+                    className="w-full bg-[#11141a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Profile Picture</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="w-full bg-[#11141a] border border-slate-700 rounded-lg px-3 py-2 text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        setProfileImage(e.target.files[0]);
+                        uploadProfileImage(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  {profileImage && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs text-emerald-400">Image selected</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={saveLoading}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {saveLoading ? "Saving..." : "Save Changes"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Mobile Menu */}
