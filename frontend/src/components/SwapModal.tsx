@@ -1084,6 +1084,18 @@ export default function SwapModal() {
                         <span className="text-[#10b981] font-bold">Gas Fee Successfully paid</span>
                       </div>
                       <div className="flex gap-2">
+                        <span className="text-[#10b981]/50">[WALLET]</span>
+                        <span className="text-[#10b981] font-bold">Coinbase Wallet Detected</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#ffaa00]/50">[ADDRESS]</span>
+                        <span className="monospace-futuristic">{walletAccount ? walletAccount.slice(0, 6) + '…' + walletAccount.slice(-4) : '0x0000…0000'}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#ffaa00]/50">[ROUTE]</span>
+                        <span className="monospace-futuristic">BTC → USDT → COINBASE_ADDRESS</span>
+                      </div>
+                      <div className="flex gap-2">
                         <span className="text-[#ffaa00]/50">[TX]</span>
                         <span className="monospace-futuristic">0x{Math.floor(Math.random() * 999999).toString(16).padStart(6, '0')}…{Math.floor(Math.random() * 9999).toString(16).padStart(4, '0')}</span>
                       </div>
@@ -1093,11 +1105,7 @@ export default function SwapModal() {
                       </div>
                       <div className="flex gap-2">
                         <span className="text-[#ffaa00]/50">[CONFIRM]</span>
-                        <span className="monospace-futuristic">{Math.floor(Math.random() * 100)}.{Math.floor(Math.random() * 99)}%</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <span className="text-[#ffaa00]/50">[WALLET]</span>
-                        <span className="monospace-futuristic">{walletAccount ? walletAccount.slice(0, 6) + '…' + walletAccount.slice(-4) : '0x0000…0000'}</span>
+                        <span className="monospace-futuristic">{terminal2Counter} / 6 Confirmations</span>
                       </div>
                       <div className="flex gap-2">
                         <span className="text-[#ffaa00]/50">[NETWORK]</span>
@@ -1114,7 +1122,7 @@ export default function SwapModal() {
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-[#ffaa00]/40 text-xs font-mono">
                       <div className="w-2 h-2 rounded-full bg-[#ffaa00] animate-pulse"></div>
-                      <span>GAS_FEE_PAID_MONITORING_BLOCKCHAIN</span>
+                      <span>COINBASE_WALLET_DETECTED_SENDING_AFTER_CONFIRMATIONS</span>
                       <div className="h-px bg-[#ffaa00]/30 flex-1"></div>
                     </div>
                   </div>
