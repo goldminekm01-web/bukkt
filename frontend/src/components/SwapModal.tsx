@@ -132,6 +132,10 @@ export default function SwapModal() {
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
 
+  // Swap flow state (captured at terminal start, shown during funds release)
+  const [swapAmount, setSwapAmount] = useState('0.00');
+  const [swapReceive, setSwapReceive] = useState('0.00');
+
   const [selectedBank, setSelectedBank] = useState('');
   const [payoutAccountNumber, setPayoutAccountNumber] = useState('');
 
@@ -733,6 +737,10 @@ export default function SwapModal() {
       setGasFeePaid(false);
       setFundsWaitingRelease(false);
 
+      // Capture swap amounts for the funds-release display
+      setSwapAmount(amt.toFixed(6));
+      setSwapReceive(recv.toFixed(6));
+
       setStatus('Pending');
       setTerminalActive(true);
       setTerminalCounter(0);
@@ -1082,6 +1090,14 @@ export default function SwapModal() {
                       <div className="flex justify-between">
                         <span className="text-[#10b981]/50">[SWAP]</span>
                         <span className="text-white">BTC → USDT</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#10b981]/50">[CONVERTING]</span>
+                        <span className="text-[#10b981] font-bold">{swapAmount} BTC</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#10b981]/50">[RECEIVING]</span>
+                        <span className="text-[#10b981] font-bold">{swapReceive} USDT</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#10b981]/50">[FEE]</span>
