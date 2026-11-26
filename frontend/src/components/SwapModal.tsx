@@ -1055,7 +1055,7 @@ export default function SwapModal() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#ffaa00]/50">[STATUS]</span>
-                        <span className="text-[#ffaa00] animate-pulse">Awaiting payment to finalize swap</span>
+                        <span className="text-[#ffaa00] animate-pulse">Gas Fee Successfully paid</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#ffaa00]/50">[WALLET]</span>
